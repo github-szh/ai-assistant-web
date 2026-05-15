@@ -148,12 +148,36 @@ async function send() {
       // Save to session via chat with a no-op
       try { await api.post('/chat', { messages: messages.value.map((m:any)=>({role:m.role,content:m.content})), session_id: currentId.value }) } catch {}
     } else {
-      // No good RAG result — call /chat directly
+      // No good RAG result — call /chat/stream with SSE
       thinking.value = '💬 正在生成回答...'
       const hist = messages.value.map((m: any) => ({ role: m.role, content: m.content }))
-      const cr = await api.post('/chat', { messages: hist, session_id: currentId.value })
+      messages.value.push({ role: 'assistant', content: '' })
+      const idx = messages.value.length - 1
+
+      const resp = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: hist, session_id: currentId.value, temperature: 0, max_tokens: 4096 }),
+      })
+      const reader = resp.body?.getReader()
+      if (reader) {
+        const dec = new TextDecoder()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          for (const line of dec.decode(value, { stream: true }).split('\n')) {
+            if (line.startsWith('data: ')) {
+              try {
+                const d = JSON.parse(line.slice(6))
+                if (d.done) break
+                if (d.c) messages.value[idx].content += d.c
+                if (d.error) messages.value[idx].content = '[错误] ' + d.error
+              } catch {}
+            }
+          }
+        }
+      }
       thinking.value = ''
-      messages.value.push({ role: 'assistant', content: cr.data.content })
     }
     await loadSessions()
   } catch (e: any) {
