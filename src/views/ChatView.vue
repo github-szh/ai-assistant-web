@@ -25,6 +25,13 @@
           <div>
             <div class="role-name">{{ m.role==='user'?'你':'AI Assistant' }}</div>
             <div class="bubble md" v-html="renderMd(m.content)" />
+            <div v-if="m.sourceType" class="source-tag">
+              <template v-if="m.sourceType==='rag' && m.sources?.length">
+                📚 来自 {{ m.sources.join('、') }}
+              </template>
+              <template v-else-if="m.sourceType==='rag'">📚 来自知识库</template>
+              <template v-else>💡 由 AI 生成</template>
+            </div>
           </div>
         </div>
         <div v-if="thinking" class="msg-row think-row">
@@ -125,13 +132,16 @@ async function send() {
     }
 
     // Try RAG first
-    let ragAnswer = ''
+    let ragAnswer = ''; let ragSources: string[] = []
     const rejectWords = ['无法基于现有资料', '无法回答', '没有找到', '未找到', '没有提供', '没有提到', '未提及', '无关', '没有相关信息', '知识库中没有', '未就绪']
     try {
       const qr = await api.post('/query', { question: text, top_k: 3 })
       const ans = qr.data.answer || ''
       if (ans && !rejectWords.some(w => ans.includes(w))) {
         ragAnswer = ans
+        const files = new Set<string>()
+        ;(qr.data.sources || []).forEach((s: any) => files.add(s.filename))
+        ragSources = [...files]
         thinking.value = '📖 在知识库中找到相关内容，正在整理...'
       } else {
         thinking.value = '💬 知识库无匹配结果，正在通过AI生成回答...'
@@ -142,16 +152,15 @@ async function send() {
     scrollDown()
 
     if (ragAnswer) {
-      // RAG answer is good — use it directly, still save to session
       thinking.value = ''
-      messages.value.push({ role: 'assistant', content: ragAnswer })
+      messages.value.push({ role: 'assistant', content: ragAnswer, sourceType: 'rag', sources: ragSources })
       // Save to session via chat with a no-op
       try { await api.post('/chat', { messages: messages.value.map((m:any)=>({role:m.role,content:m.content})), session_id: currentId.value }) } catch {}
     } else {
       // No good RAG result — call /chat/stream with SSE
       thinking.value = '💬 正在生成回答...'
       const hist = messages.value.map((m: any) => ({ role: m.role, content: m.content }))
-      messages.value.push({ role: 'assistant', content: '' })
+      messages.value.push({ role: 'assistant', content: '', sourceType: 'llm' })
       const idx = messages.value.length - 1
 
       const resp = await fetch('/api/chat/stream', {
@@ -241,6 +250,7 @@ onMounted(loadSessions)
 .msg-row.user .avatar { background: #409eff; }
 .msg-row.assistant .avatar { background: #67c23a; }
 .role-name { font-size: 11px; color: #909399; margin-bottom: 2px; }
+.source-tag { font-size: 11px; color: #909399; margin-top: 3px; }
 .msg-row.user .role-name { text-align: right; }
 .bubble { max-width: 600px; padding: 10px 14px; border-radius: 8px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
 .msg-row.user .bubble { background: #409eff; color: #fff; }

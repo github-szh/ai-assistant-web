@@ -8,7 +8,15 @@
       </div>
     </div>
 
-    <div v-if="docs.length===0" class="empty">暂无文档</div>
+    <div v-if="uploading" class="progress-bar">
+      <div class="progress-text">{{ progress }}</div>
+      <div class="progress-track"><div class="progress-fill" /></div>
+    </div>
+    <div v-if="uploadResult" class="upload-result" :class="{ fail: uploadResult.fail > 0 }">
+      {{ uploadResult.msg }}
+    </div>
+
+    <div v-if="docs.length===0 && !uploading" class="empty">暂无文档</div>
 
     <table v-else class="doc-table">
       <thead>
@@ -58,16 +66,46 @@ import api from '../api'
 
 const docs = ref<any[]>([])
 const detail = ref<any>(null)
+const uploading = ref(false)
+const progress = ref('')
+const uploadResult = ref<{ok: number; fail: number; msg: string} | null>(null)
 
 async function load() {
   try { const r = await api.get('/documents'); docs.value = r.data.documents } catch {}
 }
 async function onUpload(e: Event) {
   const files = (e.target as HTMLInputElement).files; if (!files) return
+  uploading.value = true; progress.value = ''; uploadResult.value = null
+  let ok = 0; let fail = 0
   for (const f of Array.from(files)) {
-    const form = new FormData(); form.append('file', f)
-    try { await api.post('/upload', form) } catch {}
+    progress.value = `正在上传 ${f.name}...`
+    try {
+      const resp = await fetch('/api/upload/stream', {
+        method: 'POST', body: (() => { const fd = new FormData(); fd.append('file', f); return fd })(),
+      })
+      const reader = resp.body?.getReader()
+      const dec = new TextDecoder()
+      let done = false
+      while (reader && !done) {
+        const { done: d, value } = await reader.read()
+        if (d) break
+        for (const line of dec.decode(value, { stream: true }).split('\n')) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.step === 'done') { ok++; done = true }
+              if (data.step === 'error') { fail++; done = true; progress.value = data.msg }
+              if (data.step === 'duplicate') { ok++; done = true; progress.value = data.msg }
+              if (data.msg) progress.value = data.msg
+            } catch {}
+          }
+        }
+      }
+    } catch { fail++; progress.value = `${f.name} 上传失败` }
   }
+  uploading.value = false
+  uploadResult.value = { ok, fail, msg: `完成: ${ok} 成功, ${fail} 失败` }
+  setTimeout(() => { uploadResult.value = null }, 5000)
   await load()
 }
 async function remove(docId: string) {
@@ -94,6 +132,13 @@ onMounted(load)
 .nav-link { color: #409eff; text-decoration: none; font-size: 14px; }
 .upload-btn { padding: 6px 16px; background: #409eff; color: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .upload-btn:hover { background: #337ecc; }
+.progress-bar { margin-bottom: 16px; padding: 12px 16px; background: #ecf5ff; border-radius: 8px; }
+.progress-text { font-size: 13px; color: #409eff; margin-bottom: 6px; }
+.progress-track { height: 4px; background: #d9ecff; border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; width: 100%; background: #409eff; border-radius: 2px; animation: progressPulse 1.5s infinite; }
+@keyframes progressPulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.upload-result { margin-bottom: 16px; padding: 10px 16px; background: #f0f9eb; color: #67c23a; border-radius: 8px; font-size: 13px; }
+.upload-result.fail { background: #fef0f0; color: #f56c6c; }
 .empty { text-align: center; color: #909399; padding: 60px 0; }
 .doc-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
 .doc-table th { background: #f5f7fa; padding: 10px 14px; text-align: left; font-size: 13px; color: #909399; }
