@@ -93,7 +93,12 @@ async function onUpload(e: Event) {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))
-              if (data.step === 'done') { ok++; done = true }
+              if (data.step === 'done') {
+                done = true
+                if (data.status === 'no_text') { ok++; progress.value = data.msg || '没有识别到文字，已保存' }
+                else if (data.status === 'parse_failed') { fail++; progress.value = data.msg || '解析失败' }
+                else { ok++ }
+              }
               if (data.step === 'error') { fail++; done = true; progress.value = data.msg }
               if (data.step === 'duplicate') { ok++; done = true; progress.value = data.msg }
               if (data.msg) progress.value = data.msg

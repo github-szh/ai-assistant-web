@@ -194,6 +194,17 @@ async function onFile(e: Event) {
   const form = new FormData(); form.append('file', file)
   try {
     const r = await api.post('/upload', form)
+    const status = r.data.status || ''
+    if (status === 'no_text' || status === 'parse_failed') {
+      messages.value.push({ role: 'user', content: `📎 ${file.name}` })
+      messages.value.push({ role: 'assistant', content: r.data.message || '该文件中未检测到可识别的文字内容，已保存到文档库。' })
+      if (!currentId.value) {
+        const sr = await api.post('/sessions', {}, { headers: headers() })
+        currentId.value = sr.data.id; currentTitle.value = file.name.slice(0,10)
+        await loadSessions()
+      }
+      loading.value = false; thinking.value = ''; scrollDown(); return
+    }
     messages.value.push({ role: 'user', content: `📎 ${file.name}\n请帮我分析这份文件的内容。` })
     thinking.value = '💬 正在生成回答...'; scrollDown()
     const cr = await api.post('/chat', {
@@ -207,7 +218,7 @@ async function onFile(e: Event) {
     }
     thinking.value = ''
     messages.value.push({ role: 'assistant', content: cr.data.content })
-  } catch (e: any) { thinking.value = ''; messages.value.push({ role: 'assistant', content: '上传失败: ' + (e.response?.data?.detail || e.message) }) }
+  } catch (e: any) { thinking.value = ''; messages.value.push({ role: 'assistant', content: '请求失败: ' + (e.response?.data?.detail || e.message) }) }
   loading.value = false; scrollDown()
 }
 
