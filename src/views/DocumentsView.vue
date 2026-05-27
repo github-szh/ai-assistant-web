@@ -20,13 +20,14 @@
 
     <table v-else class="doc-table">
       <thead>
-        <tr><th>文件名</th><th>格式</th><th>大小</th><th>上传时间</th><th>操作</th></tr>
+        <tr><th>文件名</th><th>大小</th><th>分块数</th><th>状态</th><th>上传时间</th><th>操作</th></tr>
       </thead>
       <tbody>
         <tr v-for="d in docs" :key="d.doc_id" @click="openDetail(d.doc_id)" class="doc-row">
           <td class="name-cell">📄 {{ d.filename }}</td>
-          <td>{{ d.file_type || d.parser_used }}</td>
           <td>{{ d.file_size || '-' }}</td>
+          <td>{{ d.chunks_count ?? '-' }}</td>
+          <td>{{ d.status || '-' }}</td>
           <td>{{ fmtTime(d.uploaded_at) }}</td>
           <td><span class="del-btn" @click.stop="remove(d.doc_id)">🗑</span></td>
         </tr>
@@ -57,6 +58,25 @@
         </div>
       </div>
     </div>
+
+    <!-- Confirm replace dialog -->
+    <div v-if="dupDialog.visible" class="modal-overlay" @click.self="dupDialog.visible=false">
+      <div class="modal" style="width:420px">
+        <div class="modal-hd">
+          <h3>文件已存在</h3>
+          <span class="close" @click="dupDialog.visible=false">✕</span>
+        </div>
+        <div class="modal-body" style="text-align:center">
+          <p style="margin-bottom:20px;font-size:14px;color:#606266">
+            「{{ dupDialog.filename }}」已经存在，确定要更新吗？
+          </p>
+          <div style="display:flex;gap:12px;justify-content:center">
+            <button class="dialog-btn cancel" @click="dupDialog.visible=false; dupDialog.resolve?.(false)">取消</button>
+            <button class="dialog-btn confirm" @click="dupDialog.visible=false; dupDialog.resolve?.(true)">确定</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -69,6 +89,17 @@ const detail = ref<any>(null)
 const uploading = ref(false)
 const progress = ref('')
 const uploadResult = ref<{ok: number; fail: number; msg: string} | null>(null)
+const dupDialog = ref<{
+  visible: boolean
+  filename: string
+  resolve: ((v: boolean) => void) | null
+}>({ visible: false, filename: '', resolve: null })
+
+function showDupDialog(filename: string): Promise<boolean> {
+  return new Promise(resolve => {
+    dupDialog.value = { visible: true, filename, resolve }
+  })
+}
 
 async function load() {
   try { const r = await api.get('/documents'); docs.value = r.data.documents } catch {}
@@ -80,8 +111,20 @@ async function onUpload(e: Event) {
   for (const f of Array.from(files)) {
     progress.value = `正在上传 ${f.name}...`
     try {
-      const resp = await fetch('/api/upload/stream', {
-        method: 'POST', body: (() => { const fd = new FormData(); fd.append('file', f); return fd })(),
+      // Pre-check: is this file already in the library?
+      const check = await api.post('/upload/check', { filename: f.name, file_size: f.size })
+      let url = '/api/upload/stream'
+      if (check.data.exists) {
+        const confirmed = await showDupDialog(check.data.filename)
+        if (!confirmed) { continue }
+        url += `?replace_doc_id=${check.data.doc_id}`
+      }
+
+      const token = localStorage.getItem('token')
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: (() => { const fd = new FormData(); fd.append('file', f); return fd })(),
       })
       const reader = resp.body?.getReader()
       const dec = new TextDecoder()
@@ -97,17 +140,17 @@ async function onUpload(e: Event) {
                 done = true
                 if (data.status === 'no_text') { ok++; progress.value = data.msg || '没有识别到文字，已保存' }
                 else if (data.status === 'parse_failed') { fail++; progress.value = data.msg || '解析失败' }
-                else { ok++ }
+                else if (data.status === 'duplicate') { ok++; progress.value = data.msg || '文件已存在，跳过' }
+                else { ok++; progress.value = data.msg || '上传完成' }
               }
               if (data.step === 'error') { fail++; done = true; progress.value = data.msg }
-              if (data.step === 'duplicate') { ok++; done = true; progress.value = data.msg }
-              if (data.msg) progress.value = data.msg
             } catch {}
           }
         }
       }
     } catch { fail++; progress.value = `${f.name} 上传失败` }
   }
+  (e.target as HTMLInputElement).value = ''
   uploading.value = false
   uploadResult.value = { ok, fail, msg: `完成: ${ok} 成功, ${fail} 失败` }
   setTimeout(() => { uploadResult.value = null }, 5000)
@@ -165,4 +208,9 @@ onMounted(load)
 .summary-text { font-size: 14px; line-height: 1.7; color: #303133; }
 .chunks-box { margin-top: 16px; }
 .chunk-item { font-size: 13px; line-height: 1.6; color: #606266; padding: 8px 0; border-bottom: 1px solid #f0f0f0; white-space: pre-wrap; }
+.dialog-btn { padding: 8px 28px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.dialog-btn.cancel { background: #f5f7fa; color: #606266; }
+.dialog-btn.cancel:hover { background: #e9ecef; }
+.dialog-btn.confirm { background: #409eff; color: #fff; }
+.dialog-btn.confirm:hover { background: #337ecc; }
 </style>
