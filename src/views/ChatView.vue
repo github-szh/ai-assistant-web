@@ -26,6 +26,11 @@
       </div>
       <div class="chat-top" v-else><input v-model="newTitle" class="title-input" @keydown.enter="doRename" @blur="doRename" ref="titleInput" /></div>
       <div class="msg-area" ref="msgBox">
+        <div v-if="hasMore" class="load-more" @click="loadMore">加载更早的消息</div>
+        <div v-if="summary" class="summary-card">
+          <div class="summary-label">📝 对话摘要</div>
+          <div class="summary-text">{{ summary }}</div>
+        </div>
         <div v-for="(m,i) in messages" :key="i" class="msg-row" :class="m.role">
           <div class="avatar" v-text="m.role==='user'?'👤':'🤖'" />
           <div class="msg-body">
@@ -86,6 +91,8 @@ const msgBox = ref<HTMLElement>()
 const inputEl = ref<HTMLTextAreaElement>()
 const currentTitle = ref('')
 const ragEnabled = ref(true)
+const hasMore = ref(false)
+const summary = ref('')
 const dots = ref('.')
 let dotsTimer: any = null
 
@@ -107,13 +114,24 @@ async function loadSessions() {
 async function switchTo(sid: string) {
   currentId.value = sid
   try {
-    const r = await api.get(`/sessions/${sid}`)
+    const r = await api.get(`/sessions/${sid}?limit=20`)
     messages.value = r.data.messages; currentTitle.value = r.data.title
+    hasMore.value = r.data.has_more
+    summary.value = r.data.summary || ''
     scrollDown()
   } catch { messages.value = [] }
 }
 async function newChat() {
-  currentId.value = null; messages.value = []; currentTitle.value = '新对话'
+  currentId.value = null; messages.value = []; currentTitle.value = '新对话'; hasMore.value = false; summary.value = ''
+}
+async function loadMore() {
+  if (!hasMore.value || !currentId.value || messages.value.length === 0) return
+  const firstId = messages.value[0].id
+  try {
+    const r = await api.get(`/sessions/${currentId.value}?limit=20&before_id=${firstId}`)
+    messages.value = [...r.data.messages, ...messages.value]
+    hasMore.value = r.data.has_more
+  } catch {}
 }
 // Rename
 const editingTitle = ref(false)
@@ -348,6 +366,11 @@ onMounted(loadSessions)
 .chat-top { padding: 10px 20px; background: #fff; font-weight: 600; font-size: 14px; border-bottom: 1px solid #e4e7ed; cursor: default; display: flex; justify-content: space-between; align-items: center; }
 .title-input { border: 1px solid #409eff; border-radius: 4px; padding: 2px 8px; font-size: 14px; outline: none; width: 250px; }
 .msg-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.load-more { text-align: center; color: #409eff; cursor: pointer; font-size: 13px; padding: 6px 0; user-select: none; }
+.load-more:hover { color: #337ecc; }
+.summary-card { background: #ecf5ff; border: 1px solid #d9ecff; border-radius: 8px; padding: 10px 14px; margin-bottom: 4px; }
+.summary-label { font-size: 12px; color: #409eff; margin-bottom: 4px; font-weight: 500; }
+.summary-text { font-size: 12px; color: #606266; line-height: 1.6; white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
 .msg-row { display: flex; gap: 10px; align-items: flex-start; }
 .msg-row.user { flex-direction: row-reverse; }
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
