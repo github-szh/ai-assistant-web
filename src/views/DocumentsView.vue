@@ -3,6 +3,12 @@
     <div class="top-bar">
       <h2>📁 文档管理</h2>
       <div class="top-actions">
+        <select v-model="chunkStrategy" class="strategy-select">
+          <option value="fixed_size">字符滑动窗口</option>
+          <option value="sentence">语义边界</option>
+          <option value="markdown_header">Markdown标题</option>
+          <option value="recursive">递归分块</option>
+        </select>
         <router-link to="/chat" class="nav-link">💬 返回对话</router-link>
         <label class="upload-btn">上传文档<input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg" @change="onUpload" style="display:none" multiple /></label>
       </div>
@@ -89,6 +95,7 @@ const detail = ref<any>(null)
 const uploading = ref(false)
 const progress = ref('')
 const uploadResult = ref<{ok: number; fail: number; msg: string} | null>(null)
+const chunkStrategy = ref('fixed_size')
 const dupDialog = ref<{
   visible: boolean
   filename: string
@@ -113,11 +120,11 @@ async function onUpload(e: Event) {
     try {
       // Pre-check: is this file already in the library?
       const check = await api.post('/upload/check', { filename: f.name, file_size: f.size })
-      let url = '/api/upload/stream'
+      let url = `/api/upload/stream?strategy=${chunkStrategy.value}`
       if (check.data.exists) {
         const confirmed = await showDupDialog(check.data.filename)
         if (!confirmed) { continue }
-        url += `?replace_doc_id=${check.data.doc_id}`
+        url += `&replace_doc_id=${check.data.doc_id}`
       }
 
       const token = localStorage.getItem('token')
@@ -180,6 +187,8 @@ onMounted(load)
 .nav-link { color: #409eff; text-decoration: none; font-size: 14px; }
 .upload-btn { padding: 6px 16px; background: #409eff; color: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .upload-btn:hover { background: #337ecc; }
+.strategy-select { padding: 6px 10px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 13px; color: #606266; background: #fff; outline: none; cursor: pointer; }
+.strategy-select:focus { border-color: #409eff; }
 .progress-bar { margin-bottom: 16px; padding: 12px 16px; background: #ecf5ff; border-radius: 8px; }
 .progress-text { font-size: 13px; color: #409eff; margin-bottom: 6px; }
 .progress-track { height: 4px; background: #d9ecff; border-radius: 2px; overflow: hidden; }
