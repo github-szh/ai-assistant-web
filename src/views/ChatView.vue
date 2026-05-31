@@ -36,6 +36,7 @@
           <div class="msg-body">
             <div class="role-name">{{ m.role==='user'?'你':'AI Assistant' }}
               <span v-if="m.role==='assistant' && m.label" class="msg-tag" :class="m.label">{{ m.label==='rag' ? '📚 知识库' : '🤖 通用回答' }}</span>
+              <span v-if="m.role==='assistant' && m.confidence" class="confidence-tag" :class="m.confidence">{{ m.confidence==='high' ? '🟢 高置信度' : m.confidence==='medium' ? '🟡 中置信度' : '🔴 低置信度' }}</span>
             </div>
             <!-- Source cards (RAG only) -->
             <div v-if="m.sources && m.sources.length" class="source-cards">
@@ -170,6 +171,7 @@ async function send() {
     const token = localStorage.getItem('token')
     let ragUsed = false
     let ragSources: any[] = []
+    let ragConfidence = 'medium'
     let ragIdx = -1
     let ragConfirmed = false       // true once we know it's not a rejection
     let ragBuffer = ''
@@ -199,6 +201,7 @@ async function send() {
                 if (d.sources) {
                   ragUsed = true
                   ragSources = d.sources
+                  ragConfidence = d.confidence || 'medium'
                   thinking.value = '📖 在知识库中找到相关内容，正在整理...'
                 }
                 if (d.c) {
@@ -236,21 +239,19 @@ async function send() {
                         messages.value[ragIdx].content = final
                         messages.value[ragIdx].sources = ragSources
                         messages.value[ragIdx].label = 'rag'
+                        messages.value[ragIdx].confidence = ragConfidence
                         thinking.value = ''
                       }
                     } else {
                       messages.value[ragIdx].sources = ragSources
                       messages.value[ragIdx].label = 'rag'
+                      messages.value[ragIdx].confidence = ragConfidence
                       thinking.value = ''
                     }
                   }
                   break
                 }
                 if (d.step === 'not_found' || d.error) {
-                  messages.value.pop()
-                  ragUsed = false
-                  ragIdx = -1
-                  thinking.value = '💬 知识库无匹配结果，正在通过AI生成回答...'
                   break
                 }
               } catch {}
@@ -424,6 +425,14 @@ onMounted(loadSessions)
 }
 .msg-tag.rag { background: #ecf5ff; color: #409eff; }
 .msg-tag.ai { background: #f5f5f5; color: #909399; }
+
+.confidence-tag {
+  display: inline-block; margin-left: 4px; padding: 1px 8px;
+  border-radius: 10px; font-size: 11px; vertical-align: middle;
+}
+.confidence-tag.high { background: #f0f9eb; color: #67c23a; }
+.confidence-tag.medium { background: #fdf6ec; color: #e6a23c; }
+.confidence-tag.low { background: #fef0f0; color: #f56c6c; }
 
 /* Source cards */
 .source-cards {
