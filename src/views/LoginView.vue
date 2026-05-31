@@ -7,6 +7,7 @@
       <input v-model="password" class="field" type="password" placeholder="密码" @keydown.enter="login" />
       <button class="btn" :disabled="loading" @click="login">{{ loading ? '登录中...' : '登 录' }}</button>
       <p v-if="err" class="err">{{ err }}</p>
+      <p class="link">没有账号？<router-link to="/register">去注册</router-link></p>
     </div>
   </div>
 </template>
@@ -49,4 +50,7 @@ h1 { font-size: 22px; margin-bottom: 4px; }
 .btn:hover { background: #337ecc; }
 .btn:disabled { background: #a0cfff; cursor: not-allowed; }
 .err { color: #f56c6c; margin-top: 12px; font-size: 13px; }
+.link { margin-top: 16px; font-size: 13px; color: #909399; }
+.link a { color: #409eff; text-decoration: none; }
+.link a:hover { text-decoration: underline; }
 </style>
