@@ -166,7 +166,7 @@ async function send() {
     }
 
     // Try RAG streaming first (only when toggle is on)
-    const rejectWords = ['无法完整回答', '无法基于现有资料', '无法回答', '没有找到', '未找到', '没有提供', '没有提到', '未提及', '无关', '没有相关信息', '知识库中没有', '未就绪', '建议上传相关文档']
+    const rejectWords = ['未就绪']
     const token = localStorage.getItem('token')
     let ragUsed = false
     let ragSources: any[] = []
