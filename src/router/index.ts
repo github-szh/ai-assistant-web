@@ -5,7 +5,6 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/chat' },
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
-    { path: '/register', name: 'register', component: () => import('../views/RegisterView.vue') },
     { path: '/chat', name: 'chat', component: () => import('../views/ChatView.vue'), meta: { auth: true } },
     { path: '/documents', name: 'documents', component: () => import('../views/DocumentsView.vue'), meta: { auth: true } },
   ],
