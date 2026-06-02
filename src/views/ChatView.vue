@@ -183,7 +183,7 @@ async function send() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question: text, top_k: 3 }),
+        body: JSON.stringify({ question: text, top_k: 3, messages: messages.value.slice(-6) }),
       })
       const ragReader = ragResp.body?.getReader()
       if (ragReader) {
