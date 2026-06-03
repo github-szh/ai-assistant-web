@@ -65,7 +65,7 @@
               <span>{{ m._qualityExpanded ? '▼' : '▶' }} ✅ 质检通过</span>
               <div v-if="m._qualityExpanded && m.quality" class="quality-detail">
                 <div v-for="v in m.quality.violations" :key="v.dimension" class="quality-dim">
-                  <span :class="v.passed ? 'pass' : 'fail'">{{ v.passed ? '✅' : '❌' }} {{ v.dimension }}</span>
+                  <span :class="v.passed ? 'pass' : 'fail'">{{ v.passed ? '✅' : '❌' }} {{ dimLabel(v.dimension) }}</span>
                   <span>{{ v.passed ? '通过' : '未通过' }} ({{ (v.score * 100).toFixed(0) }}分)</span>
                 </div>
               </div>
@@ -104,6 +104,13 @@ const disclaimerText = '\n\n> ⚠️ 此回答由语言模型生成，可能不�
 
 function cleanContent(text: string) { return text.replace(/\n*> ⚠️ 此回答由语言模型生成[\s\S]*$/, '').trimEnd() }
 function renderMd(text: string) { return text ? marked.parse(text) : '' }
+const dimLabels: Record<string, string> = {
+  'retrieval_quality': '检索质量',
+  'safety': '安全检查',
+  'factuality': '事实校验',
+  'relevance': '相关性检查',
+}
+function dimLabel(key: string) { return dimLabels[key] || key }
 
 const sessions = ref<any[]>([])
 const currentId = ref<string | null>(null)
