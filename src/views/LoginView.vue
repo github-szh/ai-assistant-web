@@ -7,6 +7,7 @@
       <input v-model="password" class="field" type="password" placeholder="密码" @keydown.enter="login" />
       <button class="btn" :disabled="loading" @click="login">{{ loading ? '登录中...' : '登 录' }}</button>
       <p v-if="err" class="err">{{ err }}</p>
+      <p class="link">没有账号？<router-link to="/register">去注册</router-link></p>
     </div>
   </div>
 </template>
