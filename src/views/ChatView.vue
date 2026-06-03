@@ -47,6 +47,29 @@
               </div>
             </div>
             <div class="bubble md" v-html="renderMd(cleanContent(m.content) + (m.disclaimer && m.label!=='rag' ? disclaimerText : ''))" />
+            <!-- ── 质检结果展示区域 ──────────────────────────────── -->
+            <!-- 🔴 拦截状态：替换回答为安全消息 -->
+            <div v-if="m.qualityStatus === 'blocked'" class="quality-badge blocked">
+              <span>🔴 该回答已被安全策略自动拦截</span>
+            </div>
+            <!-- ⚠️ 警告状态：在回答末尾已追加 warning_text -->
+            <div v-if="m.qualityStatus === 'warned'" class="quality-badge warned">
+              <span>⚠️ 此回答部分内容未通过事实校验</span>
+            </div>
+            <!-- 🟡 降级状态：仅显示来源 -->
+            <div v-if="m.qualityStatus === 'degraded'" class="quality-badge degraded">
+              <span>🟡 回答内容已自动降级，以下仅为检索来源</span>
+            </div>
+            <!-- ✅ 通过状态：可点击展开查看详情 -->
+            <div v-if="m.qualityStatus === 'passed'" class="quality-badge passed" @click="m._qualityExpanded = !m._qualityExpanded">
+              <span>{{ m._qualityExpanded ? '▼' : '▶' }} ✅ 质检通过</span>
+              <div v-if="m._qualityExpanded && m.quality" class="quality-detail">
+                <div v-for="v in m.quality.violations" :key="v.dimension" class="quality-dim">
+                  <span :class="v.passed ? 'pass' : 'fail'">{{ v.passed ? '✅' : '❌' }} {{ v.dimension }}</span>
+                  <span>{{ v.passed ? '通过' : '未通过' }} ({{ (v.score * 100).toFixed(0) }}分)</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div v-if="thinking" class="msg-row think-row">
@@ -224,6 +247,35 @@ async function send() {
                       ragBuffer = ''
                     }
                   }
+                }
+                // ── 处理质量检测结果 ─────────────────────────────────
+                // quality 事件在 LLM 流式生成完成后、done 事件前发送
+                // 根据 action 类型决定前端展示行为
+                if (d.type === 'quality') {
+                    const msg = messages.value[ragIdx]
+                    if (!msg) continue
+
+                    // 将质检完整信息保存到消息对象，供 UI 展示
+                    msg.quality = d
+
+                    // 根据干预动作执行不同的 UI 操作
+                    if (d.action === 'block') {
+                        // 拦截：替换已显示的文本为安全消息
+                        msg.content = d.override_answer || '抱歉，根据内容安全策略，无法展示此回答。'
+                        msg.qualityStatus = 'blocked'
+                    } else if (d.action === 'degrade') {
+                        // 降级：清空回答文本，保留来源
+                        msg.content = ''
+                        msg.qualityStatus = 'degraded'
+                    } else if (d.action === 'warn') {
+                        // 警告：在回答末尾追加警告提示
+                        msg.content += '\n\n> ⚠️ ' + (d.warning_text || '此回答部分内容可能存在问题，请谨慎参考。')
+                        msg.qualityStatus = 'warned'
+                    } else {
+                        // 通过：标记质检通过状态（UI 显示可收起的通过标记）
+                        msg.qualityStatus = 'passed'
+                    }
+                    continue  // quality 事件不需要进一步处理
                 }
                 if (d.done) {
                   if (ragUsed && ragIdx >= 0) {
@@ -447,6 +499,21 @@ onMounted(loadSessions)
 .source-idx { font-weight: 600; color: #67c23a; font-size: 11px; flex-shrink: 0; }
 .source-fname { color: #303133; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .source-snippet { color: #909399; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 质检标记样式 */
+.quality-badge {
+  margin-top: 8px; padding: 6px 10px;
+  border-radius: 6px; font-size: 12px;
+  cursor: default; user-select: none;
+}
+.quality-badge.blocked { background: #fef0f0; color: #f56c6c; border: 1px solid #fde2e2; }
+.quality-badge.warned { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
+.quality-badge.degraded { background: #fdf6ec; color: #e6a23c; border: 1px solid #faecd8; }
+.quality-badge.passed { background: #f0f9eb; color: #67c23a; border: 1px solid #e1f3d8; cursor: pointer; }
+.quality-detail { margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(0,0,0,.06); }
+.quality-dim { display: flex; justify-content: space-between; padding: 2px 0; font-size: 11px; }
+.quality-dim .pass { color: #67c23a; }
+.quality-dim .fail { color: #f56c6c; }
 </style>
 
 <style>
