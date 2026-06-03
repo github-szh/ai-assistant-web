@@ -38,6 +38,18 @@
               <span v-if="m.role==='assistant' && m.label" class="msg-tag" :class="m.label">{{ m.label==='rag' ? '📚 知识库' : '🤖 通用回答' }}</span>
               <span v-if="m.role==='assistant' && m.confidence" class="confidence-tag" :class="m.confidence">{{ m.confidence==='high' ? '🟢 高置信度' : m.confidence==='medium' ? '🟡 中置信度' : '🔴 低置信度' }}</span>
             </div>
+            <!-- Retrieval steps (RAG only, collapsible) -->
+            <details v-if="m.steps && m.steps.length" class="steps-detail">
+              <summary class="steps-summary">📊 检索过程（{{ m.steps.length }} 步）</summary>
+              <div class="steps-timeline">
+                <div v-for="(s,si) in m.steps" :key="si" class="step-item">
+                  <span class="step-dot" :class="{done:true}" />
+                  <span class="step-label">{{ s.label }}</span>
+                  <span class="step-detail">{{ s.detail }}</span>
+                  <span v-if="s.time != null" class="step-time">{{ s.time }}s</span>
+                </div>
+              </div>
+            </details>
             <!-- Source cards (RAG only) -->
             <div v-if="m.sources && m.sources.length" class="source-cards">
               <div class="source-item" v-for="(s,si) in m.sources" :key="si">
@@ -183,6 +195,7 @@ async function send() {
     let ragUsed = false
     let ragSources: any[] = []
     let ragConfidence = 'medium'
+    let ragSteps: any[] = []
     let ragIdx = -1
     let ragConfirmed = false       // true once we know it's not a rejection
     let ragBuffer = ''
@@ -209,6 +222,11 @@ async function send() {
             if (line.startsWith('data: ')) {
               try {
                 const d = JSON.parse(line.slice(6))
+                if (d.steps) {
+                  ragSteps = d.steps
+                  const last = d.steps[d.steps.length - 1]
+                  thinking.value = last ? `✅ ${last.label} — ${last.detail}` : '🔍 正在搜索知识库...'
+                }
                 if (d.sources) {
                   ragUsed = true
                   ragSources = d.sources
@@ -249,12 +267,14 @@ async function send() {
                       } else {
                         messages.value[ragIdx].content = final
                         messages.value[ragIdx].sources = ragSources
+                        messages.value[ragIdx].steps = ragSteps
                         messages.value[ragIdx].label = 'rag'
                         messages.value[ragIdx].confidence = ragConfidence
                         thinking.value = ''
                       }
                     } else {
                       messages.value[ragIdx].sources = ragSources
+                      messages.value[ragIdx].steps = ragSteps
                       messages.value[ragIdx].label = 'rag'
                       messages.value[ragIdx].confidence = ragConfidence
                       thinking.value = ''
@@ -453,6 +473,30 @@ onMounted(() => { loadSessions(); checkKbStatus() })
 .confidence-tag.high { background: #f0f9eb; color: #67c23a; }
 .confidence-tag.medium { background: #fdf6ec; color: #e6a23c; }
 .confidence-tag.low { background: #fef0f0; color: #f56c6c; }
+
+/* Steps timeline */
+.steps-detail { margin-bottom: 8px; }
+.steps-summary {
+  font-size: 12px; color: #909399; cursor: pointer;
+  padding: 4px 0; user-select: none;
+}
+.steps-summary:hover { color: #409eff; }
+.steps-timeline {
+  margin-top: 6px; padding-left: 10px;
+  border-left: 2px solid #e4e7ed;
+}
+.step-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0; font-size: 12px; line-height: 1.5;
+}
+.step-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #c0c4cc; flex-shrink: 0; margin-left: -5px;
+}
+.step-dot.done { background: #67c23a; }
+.step-label { color: #303133; font-weight: 500; white-space: nowrap; }
+.step-detail { color: #909399; flex: 1; }
+.step-time { color: #c0c4cc; font-size: 11px; white-space: nowrap; }
 
 /* Source cards */
 .source-cards {
