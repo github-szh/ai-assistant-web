@@ -19,9 +19,9 @@
     <div class="chat-main">
       <div class="chat-top" v-if="!editingTitle" @dblclick="startRename">
         <span>{{ currentTitle }}</span>
-        <div class="rag-toggle" @click.stop="ragEnabled=!ragEnabled" :class="{on:ragEnabled}">
+        <div class="rag-toggle" @click.stop="kbEmpty ? null : ragEnabled=!ragEnabled" :class="{on:ragEnabled, disabled:kbEmpty}" :title="kbEmpty ? '知识库为空，自动切换为通用模式' : ''">
           <span class="rag-toggle-knob" />
-          <span class="rag-label">{{ ragEnabled ? '📚 知识库' : '🤖 通用' }}</span>
+          <span class="rag-label">{{ kbEmpty ? '🤖 通用（知识库为空）' : ragEnabled ? '📚 知识库' : '🤖 通用' }}</span>
         </div>
       </div>
       <div class="chat-top" v-else><input v-model="newTitle" class="title-input" @keydown.enter="doRename" @blur="doRename" ref="titleInput" /></div>
@@ -122,6 +122,7 @@ const msgBox = ref<HTMLElement>()
 const inputEl = ref<HTMLTextAreaElement>()
 const currentTitle = ref('')
 const ragEnabled = ref(true)
+const kbEmpty = ref(false)
 const hasMore = ref(false)
 const summary = ref('')
 const dots = ref('.')
@@ -141,6 +142,16 @@ const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}
 
 async function loadSessions() {
   try { const r = await api.get('/sessions'); sessions.value = r.data.sessions } catch {}
+}
+async function checkKbStatus() {
+  try {
+    const r = await api.get('/documents')
+    const total = r.data.total || 0
+    kbEmpty.value = total === 0
+    if (kbEmpty.value) ragEnabled.value = false
+  } catch {
+    kbEmpty.value = false
+  }
 }
 async function switchTo(sid: string) {
   currentId.value = sid
@@ -311,6 +322,10 @@ async function send() {
                   break
                 }
                 if (d.step === 'not_found' || d.error) {
+                  if (ragIdx >= 0 && messages.value[ragIdx]?.role === 'assistant' && !messages.value[ragIdx].content) {
+                    messages.value.pop()
+                  }
+                  ragIdx = -1
                   break
                 }
               } catch {}
@@ -324,6 +339,7 @@ async function send() {
 
     // Fallback: RAG returned nothing or disabled, use chat stream
     if (!ragUsed) {
+      thinking.value = '💬 正在通过AI生成回答...'
       const hist = messages.value.map((m: any) => ({ role: m.role, content: m.content }))
       messages.value.push({ role: 'assistant', content: '', label: 'ai' })
       const idx = messages.value.length - 1
@@ -358,7 +374,9 @@ async function send() {
     }
 
     // Save to session
-    try { await api.post('/chat', { messages: messages.value.map((m:any)=>({role:m.role,content:cleanContent(m.content)})), session_id: currentId.value }) } catch {}
+    try { await api.post('/chat', { messages: messages.value.map((m:any)=>({role:m.role,content:cleanContent(m.content)})), session_id: currentId.value }) } catch (e: any) {
+      console.warn('会话保存失败:', e)
+    }
     await loadSessions()
   } catch (e: any) {
     thinking.value = ''
@@ -404,7 +422,7 @@ async function onFile(e: Event) {
 
 function scrollDown() { nextTick(() => { if (msgBox.value) msgBox.value.scrollTop = msgBox.value.scrollHeight }) }
 watch(input, () => { nextTick(() => { if (inputEl.value) { inputEl.value.style.height = 'auto'; inputEl.value.style.height = inputEl.value.scrollHeight + 'px' } }) })
-onMounted(loadSessions)
+onMounted(() => { loadSessions(); checkKbStatus() })
 </script>
 
 <style scoped>
@@ -472,6 +490,8 @@ onMounted(loadSessions)
 .rag-toggle.on .rag-toggle-knob { background: #409eff; }
 .rag-label { font-size: 12px; color: #909399; }
 .rag-toggle.on .rag-label { color: #409eff; }
+.rag-toggle.disabled { opacity: 0.5; cursor: not-allowed; }
+.rag-toggle.disabled .rag-toggle-knob { background: #c0c4cc; }
 
 /* Message body */
 .msg-body { max-width: 620px; }
