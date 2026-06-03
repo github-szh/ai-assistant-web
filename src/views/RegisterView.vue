@@ -6,6 +6,8 @@
       <input v-model="username" class="field" placeholder="用户名" @keydown.enter="register" />
       <input v-model="display_name" class="field" placeholder="显示名称" @keydown.enter="register" />
       <input v-model="password" class="field" type="password" placeholder="密码" @keydown.enter="register" />
+      <!-- 权限与多租户：可选租户编码，不填则创建个人租户 -->
+      <input v-model="tenantCode" class="field" placeholder="租户编码（可选，加入已有团队）" @keydown.enter="register" />
       <button class="btn" :disabled="loading" @click="register">{{ loading ? '注册中...' : '注 册' }}</button>
       <p v-if="err" class="err">{{ err }}</p>
       <p class="link">已有账号？<router-link to="/login">去登录</router-link></p>
@@ -22,6 +24,7 @@ const router = useRouter()
 const username = ref('')
 const password = ref('')
 const display_name = ref('')
+const tenantCode = ref('')  // 权限与多租户：租户编码
 const loading = ref(false)
 const err = ref('')
 
@@ -29,7 +32,12 @@ async function register() {
   if (!username.value || !password.value) return
   loading.value = true; err.value = ''
   try {
-    await api.post('/auth/register', { username: username.value, password: password.value, display_name: display_name.value })
+    await api.post('/auth/register', {
+      username: username.value,
+      password: password.value,
+      display_name: display_name.value,
+      tenant_code: tenantCode.value,
+    })
     router.push('/login')
   } catch (e: any) {
     err.value = e.response?.data?.detail || '注册失败'

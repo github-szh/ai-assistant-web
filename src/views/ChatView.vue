@@ -10,7 +10,10 @@
         </div>
       </div>
       <div class="sidebar-ft">
+        <!-- 权限与多租户：根据角色显示菜单项 -->
         <router-link to="/documents" class="link">📁 文档管理</router-link>
+        <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 系统管理</router-link>
+        <span class="link tenant-name">{{ auth.tenantName }}</span>
         <span class="link" @click="logout">🚪 退出</span>
       </div>
     </aside>
@@ -108,9 +111,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue'
 import { marked } from 'marked'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const disclaimerText = '\n\n> ⚠️ 此回答由语言模型生成，可能不完全准确，请谨慎参考。'
 
@@ -203,7 +207,9 @@ async function delSession(sid: string) {
   await loadSessions()
 }
 function onEnter(e: KeyboardEvent) { if (!e.shiftKey) { e.preventDefault(); send() } }
-function logout() { localStorage.clear(); window.location.href = '/login' }
+// 权限与多租户：使用 auth store 登出
+const auth = useAuthStore()
+function logout() { auth.logout(); window.location.href = '/login' }
 
 async function send() {
   const text = input.value.trim(); if (!text || loading.value) return

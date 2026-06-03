@@ -16,8 +16,10 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const auth = useAuthStore()
 const username = ref('')
 const password = ref('')
 const loading = ref(false)
@@ -28,9 +30,15 @@ async function login() {
   loading.value = true; err.value = ''
   try {
     const res = await api.post('/auth/login', { username: username.value, password: password.value })
-    localStorage.setItem('token', res.data.token)
-    localStorage.setItem('username', res.data.username)
-    localStorage.setItem('userId', res.data.user_id)
+    // 权限与多租户：保存角色和租户信息
+    auth.login({
+      token: res.data.token,
+      username: res.data.username,
+      user_id: res.data.user_id,
+      role: res.data.role || 'viewer',
+      tenant_id: res.data.tenant_id,
+      tenant_name: res.data.tenant_name || '',
+    })
     router.push('/chat')
   } catch (e: any) {
     err.value = e.response?.data?.detail || '登录失败'

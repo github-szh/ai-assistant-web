@@ -10,7 +10,8 @@
           <option value="recursive">递归分块</option>
         </select>
         <router-link to="/chat" class="nav-link">💬 返回对话</router-link>
-        <label class="upload-btn">上传文档<input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg" @change="onUpload" style="display:none" multiple /></label>
+        <!-- 权限与多租户：仅 editor 及以上角色可上传文档 -->
+        <label v-if="canUpload" class="upload-btn">上传文档<input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg" @change="onUpload" style="display:none" multiple /></label>
       </div>
     </div>
 
@@ -87,8 +88,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const docs = ref<any[]>([])
 const detail = ref<any>(null)
@@ -175,6 +177,10 @@ async function openDetail(docId: string) {
   } catch {}
 }
 function fmtTime(t: string) { return t ? t.slice(0,16).replace('T',' ') : '-' }
+
+// 权限与多租户：计算上传权限
+const auth = useAuthStore()
+const canUpload = computed(() => ['super_admin', 'tenant_admin', 'editor'].includes(auth.role))
 
 onMounted(load)
 </script>
