@@ -9,11 +9,13 @@
           <span class="sess-del" @click.stop="delSession(s.id)">×</span>
         </div>
       </div>
+      <div class="sidebar-userinfo">
+        <span class="uinfo-item">👤 {{ auth.username }}</span>
+        <span class="uinfo-item">🏢 {{ auth.tenantName || '无租户' }}</span>
+      </div>
       <div class="sidebar-ft">
-        <!-- 权限与多租户：根据角色显示菜单项 -->
         <router-link to="/documents" class="link">📁 文档管理</router-link>
         <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 系统管理</router-link>
-        <span class="link tenant-name">{{ auth.tenantName }}</span>
         <span class="link" @click="logout">🚪 退出</span>
       </div>
     </aside>
@@ -458,6 +460,8 @@ onMounted(() => { loadSessions(); checkKbStatus() })
 .btn-new { cursor: pointer; color: #409eff; font-size: 18px; }
 .session-list { flex: 1; overflow-y: auto; }
 .sess-item { display: flex; justify-content: space-between; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #3a3a3a; }
+.sidebar-userinfo { padding: 10px 12px; border-top: 1px solid #3a3a3a; font-size: 12px; color: #888; display: flex; flex-direction: column; gap: 4px; }
+.uinfo-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sess-item:hover,.sess-item.on { background: #3a3a3a; }
 .sess-item.on { color: #409eff; }
 .sess-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex:1; }

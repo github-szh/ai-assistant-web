@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
@@ -24,10 +24,20 @@ const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const err = ref('')
+let errTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearErr() {
+  if (errTimer) { clearTimeout(errTimer); errTimer = null }
+  err.value = ''
+}
+
+watch([username, password], () => { if (err.value) clearErr() })
+
+onUnmounted(() => { if (errTimer) clearTimeout(errTimer) })
 
 async function login() {
   if (!username.value || !password.value) return
-  loading.value = true; err.value = ''
+  loading.value = true; clearErr()
   try {
     const res = await api.post('/auth/login', { username: username.value, password: password.value })
     // 权限与多租户：保存角色和租户信息
@@ -42,6 +52,7 @@ async function login() {
     router.push('/chat')
   } catch (e: any) {
     err.value = e.response?.data?.detail || '登录失败'
+    errTimer = setTimeout(() => { err.value = '' }, 5000)
   }
   loading.value = false
 }

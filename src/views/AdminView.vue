@@ -16,13 +16,14 @@
     <div v-if="tab === 'users'" class="tab-content">
       <table class="admin-table">
         <thead>
-          <tr><th>ID</th><th>用户名</th><th>显示名</th><th>角色</th><th>状态</th><th>操作</th></tr>
+          <tr><th>ID</th><th>用户名</th><th>显示名</th><th>所属租户</th><th>角色</th><th>状态</th><th>操作</th></tr>
         </thead>
         <tbody>
           <tr v-for="u in users" :key="u.id">
             <td>{{ u.id }}</td>
             <td>{{ u.username }}</td>
             <td>{{ u.display_name }}</td>
+            <td>{{ u.tenant_name || '-' }}</td>
             <td>
               <select v-model="u.role" @change="updateRole(u)" :disabled="u.id === auth.userId">
                 <option value="viewer">查看者</option>
