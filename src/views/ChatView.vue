@@ -98,7 +98,7 @@
         <div class="input-wrap">
           <textarea v-model="input" class="msg-input" placeholder="输入问题... (Enter 发送, Shift+Enter 换行)" @keydown.enter="onEnter" ref="inputEl"></textarea>
           <div class="input-actions">
-            <label class="act-btn" title="上传文档">
+            <label v-if="canUpload" class="act-btn" title="上传文档">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
               <input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg,.txt" @change="onFile" style="display:none" />
             </label>
@@ -211,6 +211,7 @@ async function delSession(sid: string) {
 function onEnter(e: KeyboardEvent) { if (!e.shiftKey) { e.preventDefault(); send() } }
 // 权限与多租户：使用 auth store 登出
 const auth = useAuthStore()
+const canUpload = computed(() => ['super_admin', 'tenant_admin', 'editor'].includes(auth.role))
 function logout() { auth.logout(); window.location.href = '/login' }
 
 async function send() {

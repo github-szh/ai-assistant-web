@@ -12,7 +12,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    // 登录接口的 401 由 LoginView 自行处理，不触发全局跳转
+    if (err.response?.status === 401 && !err.config?.url?.includes('/auth/login')) {
       localStorage.clear()
       window.location.href = '/login'
     }

@@ -29,6 +29,7 @@
                 <option value="viewer">查看者</option>
                 <option value="editor">编辑者</option>
                 <option value="tenant_admin">管理员</option>
+                <option v-if="auth.isSuperAdmin" value="super_admin">超级管理员</option>
               </select>
             </td>
             <td>
