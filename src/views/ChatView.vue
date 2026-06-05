@@ -15,6 +15,7 @@
       </div>
       <div class="sidebar-ft">
         <router-link to="/documents" class="link">📁 文档管理</router-link>
+        <router-link to="/monitoring" class="link">📊 监控与成本</router-link>
         <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 系统管理</router-link>
         <span class="link" @click="logout">🚪 退出</span>
       </div>
@@ -254,10 +255,14 @@ async function send() {
         messages.value.push({ role: 'assistant', content: '' })
         ragIdx = messages.value.length - 1
         const dec = new TextDecoder()
+        let lineBuffer = ''
         while (true) {
           const { done, value } = await ragReader.read()
           if (done) break
-          for (const line of dec.decode(value).split('\n')) {
+          const text = lineBuffer + dec.decode(value, { stream: true })
+          const lines = text.split('\n')
+          lineBuffer = text.endsWith('\n') ? '' : (lines.pop() || '')
+          for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
                 const d = JSON.parse(line.slice(6))
@@ -265,6 +270,9 @@ async function send() {
                   ragSteps = d.steps
                   const last = d.steps[d.steps.length - 1]
                   thinking.value = last ? `✅ ${last.label} — ${last.detail}` : '🔍 正在搜索知识库...'
+                }
+                if (d.status === 'found') {
+                  ragUsed = true
                 }
                 if (d.sources) {
                   ragUsed = true
