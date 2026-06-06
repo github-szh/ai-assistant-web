@@ -36,7 +36,7 @@
           <td>{{ d.chunks_count ?? '-' }}</td>
           <td>{{ d.status || '-' }}</td>
           <td>{{ fmtTime(d.uploaded_at) }}</td>
-          <td><span class="del-btn" @click.stop="remove(d.doc_id)">🗑</span></td>
+          <td><span v-if="canUpload" class="del-btn" @click.stop="remove(d.doc_id)">🗑</span></td>
         </tr>
       </tbody>
     </table>

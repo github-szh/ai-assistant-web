@@ -3,8 +3,8 @@
     <div class="login-card">
       <h1>AI Assistant</h1>
       <p class="sub">登录以继续</p>
-      <input v-model="username" class="field" placeholder="用户名" @keydown.enter="login" />
-      <input v-model="password" class="field" type="password" placeholder="密码" @keydown.enter="login" />
+      <input v-model="username" class="field" placeholder="用户名" @keydown.enter="login" @focus="err=''" />
+      <input v-model="password" class="field" type="password" placeholder="密码" @keydown.enter="login" @focus="err=''" />
       <button class="btn" :disabled="loading" @click="login">{{ loading ? '登录中...' : '登 录' }}</button>
       <p v-if="err" class="err">{{ err }}</p>
       <p class="link">没有账号？<router-link to="/register">去注册</router-link></p>
@@ -13,7 +13,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
@@ -24,20 +24,10 @@ const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const err = ref('')
-let errTimer: ReturnType<typeof setTimeout> | null = null
-
-function clearErr() {
-  if (errTimer) { clearTimeout(errTimer); errTimer = null }
-  err.value = ''
-}
-
-watch([username, password], () => { if (err.value) clearErr() })
-
-onUnmounted(() => { if (errTimer) clearTimeout(errTimer) })
 
 async function login() {
   if (!username.value || !password.value) return
-  loading.value = true; clearErr()
+  loading.value = true; err.value = ''
   try {
     const res = await api.post('/auth/login', { username: username.value, password: password.value })
     // 权限与多租户：保存角色和租户信息
@@ -52,7 +42,6 @@ async function login() {
     router.push('/chat')
   } catch (e: any) {
     err.value = e.response?.data?.detail || '登录失败'
-    errTimer = setTimeout(() => { err.value = '' }, 5000)
   }
   loading.value = false
 }
