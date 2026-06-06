@@ -1,7 +1,7 @@
 <template>
   <div class="doc-page">
     <div class="top-bar">
-      <h2>📁 文档管理</h2>
+      <h2>📁 知识库管理</h2>
       <div class="top-actions">
         <select v-model="chunkStrategy" class="strategy-select">
           <option value="fixed_size">字符滑动窗口</option>
@@ -36,7 +36,10 @@
           <td>{{ d.chunks_count ?? '-' }}</td>
           <td>{{ d.status || '-' }}</td>
           <td>{{ fmtTime(d.uploaded_at) }}</td>
-          <td><span v-if="canUpload" class="del-btn" @click.stop="remove(d.doc_id)">🗑</span></td>
+          <td>
+            <span v-if="canUpload" class="download-btn" @click.stop="downloadDoc(d.doc_id, d.filename)" title="下载">📥</span>
+            <span v-if="canUpload" class="del-btn" @click.stop="remove(d.doc_id)">🗑</span>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -165,6 +168,19 @@ async function onUpload(e: Event) {
   setTimeout(() => { uploadResult.value = null }, 5000)
   await load()
 }
+function downloadDoc(docId: string, filename: string) {
+  const token = localStorage.getItem('token')
+  const a = document.createElement('a')
+  a.href = `/api/documents/${docId}/download`
+  a.download = filename
+  if (token) {
+    // Use fetch + blob so we can send the auth header, then trigger download
+    fetch(a.href, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => { if (!r.ok) throw new Error('download failed'); return r.blob() })
+      .then(blob => { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url) })
+      .catch(() => alert('下载失败'))
+  }
+}
 async function remove(docId: string) {
   if (!confirm('确认删除此文档？')) return
   try { await api.delete(`/documents/${docId}`) } catch {}
@@ -186,7 +202,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.doc-page { max-width: 1000px; margin: 0 auto; padding: 20px; }
+.doc-page { max-width: 1000px; margin: 0 auto; padding: 64px 20px 20px; }
 .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .top-bar h2 { font-size: 18px; }
 .top-actions { display: flex; gap: 12px; align-items: center; }
@@ -209,6 +225,8 @@ onMounted(load)
 .doc-row { cursor: pointer; }
 .doc-row:hover { background: #f5f7fa; }
 .name-cell { font-weight: 500; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-btn { cursor: pointer; color: #c0c4cc; margin-right: 8px; }
+.download-btn:hover { color: #409eff; }
 .del-btn { cursor: pointer; color: #c0c4cc; }
 .del-btn:hover { color: #f56c6c; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; }

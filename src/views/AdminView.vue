@@ -1,7 +1,7 @@
 <template>
   <div class="admin-page">
     <div class="admin-top">
-      <h2>⚙️ 系统管理</h2>
+      <h2>⚙️ 用户和租户</h2>
       <router-link to="/chat" class="nav-link">💬 返回对话</router-link>
     </div>
 
@@ -14,20 +14,34 @@
 
     <!-- 用户管理 -->
     <div v-if="tab === 'users'" class="tab-content">
+      <div class="create-user">
+        <input v-model="newUser.username" placeholder="用户名" class="field" maxlength="50" />
+        <input v-model="newUser.password" placeholder="密码" type="password" class="field" maxlength="50" />
+        <select v-if="auth.isSuperAdmin" v-model="newUser.tenant_id" class="field">
+          <option :value="undefined" disabled>选择租户</option>
+          <option v-for="t in tenants" :key="t.id" :value="t.id">{{ t.name }}</option>
+        </select>
+        <select v-model="newUser.role" class="field">
+          <option value="viewer">普通用户</option>
+          <option value="editor">编辑员</option>
+          <option v-if="auth.isSuperAdmin" value="tenant_admin">管理员</option>
+          <option v-if="auth.isSuperAdmin" value="super_admin">超级管理员</option>
+        </select>
+        <button class="btn" @click="createUser">添加用户</button>
+      </div>
       <table class="admin-table">
         <thead>
-          <tr><th>ID</th><th>用户名</th><th>显示名</th><th>所属租户</th><th>角色</th><th>状态</th><th>操作</th></tr>
+          <tr><th>ID</th><th>用户名</th><th>所属租户</th><th>角色</th><th>状态</th><th>操作</th></tr>
         </thead>
         <tbody>
           <tr v-for="u in users" :key="u.id">
             <td>{{ u.id }}</td>
             <td>{{ u.username }}</td>
-            <td>{{ u.display_name }}</td>
             <td>{{ u.tenant_name || '-' }}</td>
             <td>
-              <select v-model="u.role" @change="updateRole(u)" :disabled="u.id === auth.userId">
-                <option value="viewer">查看者</option>
-                <option value="editor">编辑者</option>
+              <select v-model="u.role" @change="updateRole(u)" :disabled="!canModify(u)">
+                <option value="viewer">普通用户</option>
+                <option value="editor">编辑员</option>
                 <option value="tenant_admin">管理员</option>
                 <option v-if="auth.isSuperAdmin" value="super_admin">超级管理员</option>
               </select>
@@ -36,7 +50,7 @@
               <span :class="u.is_active ? 'active' : 'inactive'">{{ u.is_active ? '正常' : '已禁用' }}</span>
             </td>
             <td>
-              <button class="btn-sm" @click="toggleActive(u)" :disabled="u.id === auth.userId">
+              <button class="btn-sm" @click="toggleActive(u)" :disabled="!canModify(u)">
                 {{ u.is_active ? '禁用' : '启用' }}
               </button>
             </td>
@@ -120,15 +134,36 @@ const tenants = ref<any[]>([])
 const settings = ref<any>({})
 const err = ref('')
 const newTenant = ref({ name: '', code: '' })
+const newUser = ref<{ username: string; password: string; display_name: string; role: string; tenant_id?: number }>({ username: '', password: '', display_name: '', role: 'viewer' })
+
+async function createUser() {
+  if (!newUser.value.username || !newUser.value.password) {
+    err.value = '用户名和密码不能为空'
+    return
+  }
+  try {
+    await api.post('/admin/users', newUser.value)
+    newUser.value = { username: '', password: '', display_name: '', role: 'viewer', tenant_id: undefined }
+    err.value = ''
+    await loadUsers()
+  } catch (e: any) { err.value = e.response?.data?.detail || '创建用户失败' }
+}
 
 async function loadUsers() {
   try { const r = await api.get('/admin/users'); users.value = r.data.users } catch { err.value = '加载用户失败' }
 }
 async function loadTenants() {
-  try { const r = await api.get('/admin/tenants'); tenants.value = r.data.tenants } catch {}
+  try { const r = await api.get('/admin/tenants'); tenants.value = r.data.tenants } catch { err.value = '加载租户失败' }
 }
 async function loadSettings() {
   try { const r = await api.get('/admin/settings'); settings.value = r.data } catch {}
+}
+
+const roleLevel: Record<string, number> = { viewer: 0, editor: 1, tenant_admin: 2, super_admin: 3 }
+function canModify(u: any): boolean {
+  if (u.id === auth.userId) return false
+  if (auth.isSuperAdmin) return true
+  return (roleLevel[u.role] || 0) < (roleLevel[auth.role] || 0)
 }
 
 async function updateRole(u: any) {
@@ -173,7 +208,7 @@ onMounted(() => { loadUsers(); loadTenants(); loadSettings() })
 </script>
 
 <style scoped>
-.admin-page { max-width: 1000px; margin: 0 auto; padding: 20px; }
+.admin-page { max-width: 1000px; margin: 0 auto; padding: 64px 20px 20px; }
 .admin-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .admin-top h2 { font-size: 18px; }
 .nav-link { color: #409eff; text-decoration: none; font-size: 14px; }
@@ -193,7 +228,7 @@ onMounted(() => { loadUsers(); loadTenants(); loadSettings() })
 .field:focus { border-color: #409eff; }
 .btn { padding: 8px 20px; background: #409eff; color: #fff; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
 .btn:hover { background: #337ecc; }
-.create-tenant { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+.create-tenant, .create-user { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
 .tab-content { }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .setting-item { background: #fff; padding: 16px; border-radius: 8px; border: 1px solid #ebeef5; }

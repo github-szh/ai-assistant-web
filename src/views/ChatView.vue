@@ -9,28 +9,15 @@
           <span class="sess-del" @click.stop="delSession(s.id)">×</span>
         </div>
       </div>
-      <div class="sidebar-userinfo">
-        <span class="uinfo-item">👤 {{ auth.username }}</span>
-        <span class="uinfo-item">🏢 {{ auth.tenantName || '无租户' }}</span>
-      </div>
       <div class="sidebar-ft">
-        <router-link to="/documents" class="link">📁 文档管理</router-link>
-        <router-link to="/monitoring" class="link">📊 监控与成本</router-link>
-        <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 系统管理</router-link>
-        <span class="link" @click="logout">🚪 退出</span>
+        <router-link v-if="canUpload" to="/documents" class="link">📁 知识库管理</router-link>
+        <router-link v-if="auth.isAdmin" to="/monitoring" class="link">📊 监控与成本</router-link>
+        <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 用户和租户</router-link>
       </div>
     </aside>
 
     <!-- Chat main -->
     <div class="chat-main">
-      <div class="chat-top" v-if="!editingTitle" @dblclick="startRename">
-        <span>{{ currentTitle }}</span>
-        <div class="rag-toggle" @click.stop="kbEmpty ? null : ragEnabled=!ragEnabled" :class="{on:ragEnabled, disabled:kbEmpty}" :title="kbEmpty ? '知识库为空，自动切换为通用模式' : ''">
-          <span class="rag-toggle-knob" />
-          <span class="rag-label">{{ kbEmpty ? '🤖 通用（知识库为空）' : ragEnabled ? '📚 知识库' : '🤖 通用' }}</span>
-        </div>
-      </div>
-      <div class="chat-top" v-else><input v-model="newTitle" class="title-input" @keydown.enter="doRename" @blur="doRename" ref="titleInput" /></div>
       <div class="msg-area" ref="msgBox">
         <div v-if="hasMore" class="load-more" @click="loadMore">加载更早的消息</div>
         <div v-if="summary" class="summary-card">
@@ -98,11 +85,16 @@
       <div class="input-bar">
         <div class="input-wrap">
           <textarea v-model="input" class="msg-input" placeholder="输入问题... (Enter 发送, Shift+Enter 换行)" @keydown.enter="onEnter" ref="inputEl"></textarea>
-          <div class="input-actions">
+          <div class="input-actions-left">
+            <button class="act-btn kb-btn" :class="{on:ragEnabled}" :disabled="kbEmpty" @click="kbEmpty ? null : ragEnabled=!ragEnabled">
+              {{ ragEnabled ? '📚 知识库' : '🤖 通用' }}
+            </button>
             <label v-if="canUpload" class="act-btn" title="上传文档">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
               <input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg,.txt" @change="onFile" style="display:none" />
             </label>
+          </div>
+          <div class="input-actions-right">
             <button class="act-btn send" :disabled="!input.trim()||loading" @click="send" title="发送">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
@@ -165,11 +157,9 @@ async function loadSessions() {
 async function checkKbStatus() {
   try {
     const r = await api.get('/documents')
-    const total = r.data.total || 0
-    kbEmpty.value = total === 0
-    if (kbEmpty.value) ragEnabled.value = false
+    kbEmpty.value = (r.data.total || 0) === 0
   } catch {
-    kbEmpty.value = false
+    // API failed — assume kb is not empty
   }
 }
 async function switchTo(sid: string) {
@@ -410,10 +400,7 @@ async function send() {
       thinking.value = ''
     }
 
-    // Save to session
-    try { await api.post('/chat', { messages: messages.value.map((m:any)=>({role:m.role,content:cleanContent(m.content)})), session_id: currentId.value }) } catch (e: any) {
-      console.warn('会话保存失败:', e)
-    }
+    // 消息已由 /chat/stream 自动保存，无需再调 /chat 浪费 token
     await loadSessions()
   } catch (e: any) {
     thinking.value = ''
@@ -463,14 +450,12 @@ onMounted(() => { loadSessions(); checkKbStatus() })
 </script>
 
 <style scoped>
-.chat-layout { display: flex; height: 100vh; }
+.chat-layout { display: flex; height: 100vh; padding-top: 44px; }
 .sidebar { width: 200px; background: #2c2c2c; color: #ccc; display: flex; flex-direction: column; font-size: 13px; flex-shrink: 0; }
 .sidebar-hd { padding: 12px; font-weight: 600; color: #fff; display: flex; justify-content: space-between; }
 .btn-new { cursor: pointer; color: #409eff; font-size: 18px; }
 .session-list { flex: 1; overflow-y: auto; }
 .sess-item { display: flex; justify-content: space-between; padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #3a3a3a; }
-.sidebar-userinfo { padding: 10px 12px; border-top: 1px solid #3a3a3a; font-size: 12px; color: #888; display: flex; flex-direction: column; gap: 4px; }
-.uinfo-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sess-item:hover,.sess-item.on { background: #3a3a3a; }
 .sess-item.on { color: #409eff; }
 .sess-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex:1; }
@@ -480,8 +465,6 @@ onMounted(() => { loadSessions(); checkKbStatus() })
 .link { color: #999; cursor: pointer; text-decoration: none; font-size: 12px; }
 .link:hover { color: #fff; }
 .chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #f0f2f5; }
-.chat-top { padding: 10px 20px; background: #fff; font-weight: 600; font-size: 14px; border-bottom: 1px solid #e4e7ed; cursor: default; display: flex; justify-content: space-between; align-items: center; }
-.title-input { border: 1px solid #409eff; border-radius: 4px; padding: 2px 8px; font-size: 14px; outline: none; width: 250px; }
 .msg-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .load-more { text-align: center; color: #409eff; cursor: pointer; font-size: 13px; padding: 6px 0; user-select: none; }
 .load-more:hover { color: #337ecc; }
@@ -506,31 +489,19 @@ onMounted(() => { loadSessions(); checkKbStatus() })
 .dots { display: inline-block; width: 20px; color: #409eff; font-weight: bold; }
 .input-bar { padding: 16px 20px; background: #fff; border-top: 1px solid #e4e7ed; }
 .input-wrap { position: relative; }
-.msg-input { display: block; width: 100%; padding: 12px 60px 12px 14px; border: 1px solid #dcdfe6; border-radius: 10px; font-size: 14px; font-family: inherit; line-height: 1.6; resize: none; outline: none; min-height: 48px; max-height: 200px; }
+.msg-input { display: block; width: 100%; padding: 12px 50px 44px 14px; border: 1px solid #dcdfe6; border-radius: 10px; font-size: 14px; font-family: inherit; line-height: 1.6; resize: none; outline: none; min-height: 48px; max-height: 200px; }
 .msg-input:focus { border-color: #409eff; box-shadow: 0 0 0 3px rgba(64,158,255,.06); }
-.input-actions { position: absolute; right: 6px; bottom: 8px; display: flex; gap: 4px; }
+.input-actions-left { position: absolute; left: 6px; bottom: 8px; display: flex; gap: 4px; }
+.input-actions-right { position: absolute; right: 6px; bottom: 8px; display: flex; gap: 4px; }
 .act-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid #dcdfe6; border-radius: 8px; background: #fff; cursor: pointer; color: #909399; }
 .act-btn:hover { border-color: #409eff; background: #ecf5ff; color: #409eff; }
 .act-btn.send { background: #409eff; border-color: #409eff; color: #fff; }
 .act-btn.send:hover:not(:disabled) { background: #337ecc; }
 .act-btn.send:disabled { background: #a0cfff; border-color: #a0cfff; cursor: not-allowed; }
 
-/* RAG toggle */
-.rag-toggle {
-  display: flex; align-items: center; gap: 8px; padding: 4px 12px;
-  border: 1px solid #dcdfe6; border-radius: 18px; cursor: pointer;
-  background: #f5f7fa; user-select: none; transition: all .2s;
-}
-.rag-toggle.on { background: #ecf5ff; border-color: #409eff; }
-.rag-toggle-knob {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #c0c4cc; transition: all .2s;
-}
-.rag-toggle.on .rag-toggle-knob { background: #409eff; }
-.rag-label { font-size: 12px; color: #909399; }
-.rag-toggle.on .rag-label { color: #409eff; }
-.rag-toggle.disabled { opacity: 0.5; cursor: not-allowed; }
-.rag-toggle.disabled .rag-toggle-knob { background: #c0c4cc; }
+/* KB toggle in input bar */
+.act-btn.kb-btn { width: auto; padding: 0 12px; font-size: 12px; white-space: nowrap; }
+.act-btn.kb-btn.on { border-color: #409eff; background: #ecf5ff; color: #409eff; }
 
 /* Message body */
 .msg-body { max-width: 620px; }

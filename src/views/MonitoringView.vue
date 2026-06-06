@@ -399,7 +399,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.mon-page { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.mon-page { max-width: 1100px; margin: 0 auto; padding: 64px 20px 20px; }
 .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .top-bar h2 { font-size: 18px; }
 .top-actions { display: flex; gap: 12px; align-items: center; }
