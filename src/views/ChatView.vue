@@ -13,6 +13,9 @@
         <router-link v-if="canUpload" to="/documents" class="link">📁 知识库管理</router-link>
         <router-link v-if="auth.isAdmin" to="/monitoring" class="link">📊 监控与成本</router-link>
         <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 用户和租户</router-link>
+        <router-link to="/eval" class="link">📊 RAG 测评</router-link>
+        <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 系统管理</router-link>
+        <span class="link" @click="logout">🚪 退出</span>
       </div>
     </aside>
 
