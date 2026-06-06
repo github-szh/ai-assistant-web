@@ -15,6 +15,7 @@
       </div>
       <div class="sidebar-ft">
         <router-link to="/documents" class="link">📁 文档管理</router-link>
+        <router-link to="/eval" class="link">📊 RAG 测评</router-link>
         <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 系统管理</router-link>
         <span class="link" @click="logout">🚪 退出</span>
       </div>
