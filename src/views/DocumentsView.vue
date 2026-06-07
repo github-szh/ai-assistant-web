@@ -27,14 +27,16 @@
 
     <table v-else class="doc-table">
       <thead>
-        <tr><th>文件名</th><th>大小</th><th>分块数</th><th>状态</th><th>上传时间</th><th>操作</th></tr>
+        <tr><th>文件名</th><th>大小</th><th>页数</th><th>分块数</th><th>分块策略</th><th>上传者</th><th>上传时间</th><th>操作</th></tr>
       </thead>
       <tbody>
         <tr v-for="d in docs" :key="d.doc_id" @click="openDetail(d.doc_id)" class="doc-row">
-          <td class="name-cell">📄 {{ d.filename }}</td>
+          <td class="name-cell">{{ fileIcon(d.file_type) }} {{ d.filename }}</td>
           <td>{{ d.file_size || '-' }}</td>
+          <td>{{ d.pages ?? '-' }}</td>
           <td>{{ d.chunks_count ?? '-' }}</td>
-          <td>{{ d.status || '-' }}</td>
+          <td>{{ strategyLabel(d.chunk_strategy) }}</td>
+          <td>{{ d.uploaded_by || '-' }}</td>
           <td>{{ fmtTime(d.uploaded_at) }}</td>
           <td>
             <span v-if="canUpload" class="download-btn" @click.stop="downloadDoc(d.doc_id, d.filename)" title="下载">📥</span>
@@ -52,10 +54,13 @@
           <span class="close" @click="detail=null">✕</span>
         </div>
         <div class="modal-body">
-          <div class="meta-row"><span>格式</span><span>{{ detail.file_type || detail.parser_used }}</span></div>
+          <div class="meta-row"><span>格式</span><span>{{ detail.file_type || '-' }}</span></div>
+          <div class="meta-row" v-if="detail.parser_used"><span>解析器</span><span>{{ detail.parser_used }}</span></div>
           <div class="meta-row"><span>大小</span><span>{{ detail.file_size }}</span></div>
           <div class="meta-row" v-if="detail.pages"><span>页数</span><span>{{ detail.pages }}</span></div>
           <div class="meta-row"><span>分块数</span><span>{{ detail.chunks_count }}</span></div>
+          <div class="meta-row" v-if="detail.chunk_strategy"><span>分块策略</span><span>{{ strategyLabel(detail.chunk_strategy) }}</span></div>
+          <div class="meta-row" v-if="detail.uploaded_by"><span>上传者</span><span>{{ detail.uploaded_by }}</span></div>
           <div class="meta-row"><span>上传时间</span><span>{{ detail.uploaded_at?.slice(0,19) }}</span></div>
           <div class="summary-box" v-if="detail.summary">
             <div class="summary-title">📝 AI 摘要</div>
@@ -193,6 +198,20 @@ async function openDetail(docId: string) {
   } catch {}
 }
 function fmtTime(t: string) { return t ? t.slice(0,16).replace('T',' ') : '-' }
+
+const FILE_ICONS: Record<string, string> = {
+  '.pdf': '📕', '.docx': '📘', '.doc': '📘', '.pptx': '📙', '.ppt': '📙',
+  '.xlsx': '📗', '.xls': '📗', '.png': '🖼', '.jpg': '🖼', '.jpeg': '🖼',
+  '.gif': '🖼', '.bmp': '🖼', '.webp': '🖼', '.txt': '📄', '.md': '📝',
+  '.csv': '📊', '.html': '🌐', '.json': '📋', '.xml': '📋',
+}
+function fileIcon(ext: string) { return FILE_ICONS[ext?.toLowerCase()] || '📄' }
+
+const STRATEGY_LABELS: Record<string, string> = {
+  'fixed_size': '字符滑动窗口', 'sentence': '语义边界',
+  'markdown_header': 'Markdown标题', 'recursive': '递归分块',
+}
+function strategyLabel(s: string) { return STRATEGY_LABELS[s] || s || '-' }
 
 // 权限与多租户：计算上传权限
 const auth = useAuthStore()

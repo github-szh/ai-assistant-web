@@ -39,7 +39,7 @@
         </div>
         <div class="stat-card">
           <div class="stat-label">LLM 总成本</div>
-          <div class="stat-value">¥{{ fmtCost(llmTotalCost) }}</div>
+          <div class="stat-value">${{ fmtCost(llmTotalCost) }}</div>
         </div>
       </div>
 
@@ -109,7 +109,7 @@
       </div>
     </div>
 
-    <!-- ═══ Tab: 性能 ═══ -->
+    <!-- ═══ Tab: 统计 ═══ -->
     <div v-if="activeTab === 'performance'">
       <div class="chart-row">
         <div class="chart-box">
@@ -142,18 +142,7 @@
             <div v-for="item in costChart" :key="item.name" class="bar-row">
               <span class="bar-label">{{ item.name }}</span>
               <div class="bar-track"><div class="bar-fill ct" :style="{width: pct(item.cost, costMax) + '%'}"></div></div>
-              <span class="bar-val">¥{{ fmtCost(item.cost) }}</span>
-            </div>
-          </div>
-          <div v-else class="chart-empty">暂无数据</div>
-        </div>
-        <div class="chart-box">
-          <h3>磁盘使用</h3>
-          <div v-if="diskChart.length" class="chart-bars">
-            <div v-for="item in diskChart" :key="item.name" class="bar-row">
-              <span class="bar-label">{{ item.name }}</span>
-              <div class="bar-track"><div class="bar-fill ds" :style="{width: pct(item.pct, 100) + '%'}"></div></div>
-              <span class="bar-val">{{ item.used }} / {{ item.total }}</span>
+              <span class="bar-val">${{ fmtCost(item.cost) }}</span>
             </div>
           </div>
           <div v-else class="chart-empty">暂无数据</div>
@@ -175,36 +164,12 @@
               <td>{{ fmtNum(c.prompt) }}</td>
               <td>{{ fmtNum(c.completion) }}</td>
               <td>{{ c.elapsed ? (c.elapsed + 's') : '-' }}</td>
-              <td>¥{{ Number(c.cost).toFixed(4) }}</td>
+              <td>${{ Number(c.cost).toFixed(4) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
       <div v-else class="empty">暂无 LLM 调用记录</div>
-    </div>
-
-    <!-- ═══ Tab: 告警 ═══ -->
-    <div v-if="activeTab === 'alerts'">
-      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
-        <span>🔔 告警历史</span>
-        <button class="btn-export" @click="ackAll" v-if="unackedAlerts > 0" style="font-size:12px;padding:4px 10px">全部确认</button>
-      </div>
-      <div v-if="data.alerts?.length" class="call-table-wrap">
-        <table class="call-table">
-          <thead><tr><th>时间</th><th>规则</th><th>指标</th><th>当前值</th><th>阈值</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr v-for="a in data.alerts" :key="a.id" :class="{alert_unack: !a.acknowledged}">
-              <td>{{ fmtTs(a.ts) }}</td>
-              <td>{{ a.label }}</td>
-              <td>{{ a.metric }}</td>
-              <td>{{ a.value }}</td>
-              <td>{{ a.operator === 'gt' ? '>' : '<' }} {{ a.threshold }}</td>
-              <td>{{ a.acknowledged ? '已确认' : '未确认' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div v-else class="empty">暂无告警记录</div>
     </div>
 
     <!-- ═══ Tab: 链路追踪 ═══ -->
@@ -251,9 +216,8 @@ async function checkPhoenix() {
 const tabs = computed(() => [
   { key: 'overview', label: '📊 概览' },
   { key: 'quality', label: '🎯 质量' },
-  { key: 'performance', label: '⚡ 性能' },
+  { key: 'performance', label: '⚡ 统计' },
   { key: 'details', label: '📋 明细' },
-  { key: 'alerts', label: '🔔 告警' + (unackedAlerts.value ? ` (${unackedAlerts.value})` : '') },
   { key: 'traces', label: '🔄 追踪' + (phoenixRunning.value ? ' 🟢' : '') },
 ])
 
@@ -270,16 +234,6 @@ function exportCsv() {
   const a = document.createElement('a')
   a.href = url; a.download = 'llm_calls.csv'; a.click()
   URL.revokeObjectURL(url)
-}
-
-async function ackAll() {
-  try {
-    await api.post('/api/alerts/ack', { all: true })
-    await load()
-  } catch {}
-}
-function ackOne(id: number) {
-  api.post('/api/alerts/ack', { id }).then(load).catch(() => {})
 }
 
 async function load() {
@@ -310,9 +264,15 @@ const tokenChart = computed(() => {
 const tokenMax = computed(() => Math.max(...tokenChart.value.map(i => i.count), 1))
 
 const costMap = computed(() => data.value.llm_costs ?? {})
-const costChart = computed(() =>
-  Object.entries(costMap.value).map(([k, v]) => ({ name: k, cost: v as number }))
-)
+const costChart = computed(() => {
+  const byModel: Record<string, number> = {}
+  for (const [k, v] of Object.entries(costMap.value)) {
+    const parts = k.split('/')
+    const model = parts[1] ?? k
+    byModel[model] = (byModel[model] ?? 0) + (v as number)
+  }
+  return Object.entries(byModel).map(([name, cost]) => ({ name, cost }))
+})
 const costMax = computed(() => Math.max(...costChart.value.map(i => i.cost), 1))
 
 const gpuName = computed(() => data.value.gpu?.['gpu_0_name'] ?? '')
@@ -320,7 +280,6 @@ const hasRedis = computed(() => data.value.redis && Object.keys(data.value.redis
 const hasLatency = computed(() => (data.value.latency?.p50 ?? 0) > 0)
 
 const hasRag = computed(() => data.value.rag && (data.value.rag.total ?? 0) > 0)
-const unackedAlerts = computed(() => (data.value.alerts ?? []).filter((a: any) => !a.acknowledged).length)
 const ragBuckets = computed(() => {
   const b = data.value.rag?.buckets ?? {}
   return [
@@ -331,17 +290,6 @@ const ragBuckets = computed(() => {
   ].filter(x => x.count > 0)
 })
 const ragTotal = computed(() => ragBuckets.value.reduce((s, b) => s + b.count, 0))
-
-const diskChart = computed(() => {
-  const disks = data.value.disks ?? []
-  const totals: Record<string, number> = data.value.disk_totals ?? {}
-  return disks.map((d: any) => ({
-    name: d.mount,
-    used: fmtBytes(d.used),
-    total: fmtBytes(totals[d.mount] ?? 0),
-    pct: totals[d.mount] ? Math.round(d.used / totals[d.mount] * 100) : 0,
-  }))
-})
 
 const llmTotalTokens = computed(() => {
   const m = tokenMap.value
@@ -380,11 +328,11 @@ function fmtTs(ts: number) {
 let countdown: number | null = null
 function startRefresh() {
   load()
-  timer = window.setInterval(load, 5000)
-  nextRefresh.value = 5
+  timer = window.setInterval(load, 30000)
+  nextRefresh.value = 30
   countdown = window.setInterval(() => {
     if (nextRefresh.value > 0) nextRefresh.value--
-    else nextRefresh.value = 5
+    else nextRefresh.value = 30
   }, 1000)
 }
 
@@ -426,7 +374,7 @@ onUnmounted(() => {
 .chart-box h3 { font-size: 14px; margin-bottom: 12px; color: #303133; }
 .chart-bars { display: flex; flex-direction: column; gap: 8px; }
 .bar-row { display: flex; align-items: center; gap: 8px; }
-.bar-label { width: 80px; font-size: 12px; color: #606266; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-label { min-width: 150px; max-width: 220px; font-size: 12px; color: #606266; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar-track { flex: 1; height: 12px; background: #f0f2f5; border-radius: 6px; overflow: hidden; }
 .bar-fill { height: 100%; background: #409eff; border-radius: 6px; transition: width .5s; }
 .bar-fill.tk { background: #67c23a; }
