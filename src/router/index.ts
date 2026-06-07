@@ -9,8 +9,8 @@ const router = createRouter({
     { path: '/register', name: 'register', component: () => import('../views/RegisterView.vue') },
     { path: '/chat', name: 'chat', component: () => import('../views/ChatView.vue'), meta: { auth: true } },
     { path: '/documents', name: 'documents', component: () => import('../views/DocumentsView.vue'), meta: { auth: true } },
-    { path: '/monitoring', name: 'monitoring', component: () => import('../views/MonitoringView.vue'), meta: { auth: true } },
-    { path: '/eval', name: 'eval', component: () => import('../views/EvalView.vue'), meta: { auth: true } },
+    { path: '/monitoring', name: 'monitoring', component: () => import('../views/MonitoringView.vue'), meta: { auth: true, role: ['super_admin', 'tenant_admin'] } },
+    { path: '/eval', name: 'eval', component: () => import('../views/EvalView.vue'), meta: { auth: true, role: ['super_admin', 'tenant_admin'] } },
     // 权限与多租户：管理后台路由，仅 admin 角色可访问
     {
       path: '/admin',
