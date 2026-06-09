@@ -27,7 +27,7 @@
 
     <table v-else class="doc-table">
       <thead>
-        <tr><th>文件名</th><th>大小</th><th>页数</th><th>分块数</th><th>分块策略</th><th>上传者</th><th>上传时间</th><th>操作</th></tr>
+        <tr><th>文件名</th><th>大小</th><th>页数</th><th>分块数</th><th>分块策略</th><th>上传者</th><th>租户</th><th>上传时间</th><th>操作</th></tr>
       </thead>
       <tbody>
         <tr v-for="d in docs" :key="d.doc_id" @click="openDetail(d.doc_id)" class="doc-row">
@@ -37,6 +37,7 @@
           <td>{{ d.chunks_count ?? '-' }}</td>
           <td>{{ strategyLabel(d.chunk_strategy) }}</td>
           <td>{{ d.uploaded_by || '-' }}</td>
+          <td>{{ d.tenant_name || '-' }}</td>
           <td>{{ fmtTime(d.uploaded_at) }}</td>
           <td>
             <span v-if="canUpload" class="download-btn" @click.stop="downloadDoc(d.doc_id, d.filename)" title="下载">📥</span>
