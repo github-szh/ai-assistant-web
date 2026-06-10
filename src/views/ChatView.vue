@@ -30,7 +30,8 @@
           <div class="msg-body">
             <div class="role-name">{{ m.role==='user'?'你':'AI Assistant' }}
               <span v-if="m.role==='assistant' && m.label" class="msg-tag" :class="m.label">{{ m.label==='rag' ? '📚 知识库' : '🤖 通用回答' }}</span>
-              <span v-if="m.role==='assistant' && m.confidence" class="confidence-tag" :class="m.confidence">{{ m.confidence==='high' ? '🟢 高置信度' : m.confidence==='medium' ? '🟡 中置信度' : '🔴 低置信度' }}</span>
+              <!-- 置信度暂时隐藏，后续优化 -->
+              <!-- <span v-if="m.role==='assistant' && m.confidence" class="confidence-tag" :class="m.confidence">{{ m.confidence==='high' ? '🟢 高置信度' : m.confidence==='medium' ? '🟡 中置信度' : '🔴 低置信度' }}</span> -->
             </div>
             <!-- Retrieval steps (RAG only, collapsible) -->
             <details v-if="m.steps && m.steps.length" class="steps-detail">
