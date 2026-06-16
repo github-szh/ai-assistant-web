@@ -1,7 +1,7 @@
 <template>
   <div class="doc-page">
     <div class="top-bar">
-      <h2>📁 文档管理</h2>
+      <h2>📁 知识库管理</h2>
       <div class="top-actions">
         <select v-model="chunkStrategy" class="strategy-select">
           <option value="fixed_size">字符滑动窗口</option>
@@ -10,7 +10,8 @@
           <option value="recursive">递归分块</option>
         </select>
         <router-link to="/chat" class="nav-link">💬 返回对话</router-link>
-        <label class="upload-btn">上传文档<input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg" @change="onUpload" style="display:none" multiple /></label>
+        <!-- 权限与多租户：仅 editor 及以上角色可上传文档 -->
+        <label v-if="canUpload" class="upload-btn">上传文档<input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg" @change="onUpload" style="display:none" multiple /></label>
       </div>
     </div>
 
@@ -26,16 +27,22 @@
 
     <table v-else class="doc-table">
       <thead>
-        <tr><th>文件名</th><th>大小</th><th>分块数</th><th>状态</th><th>上传时间</th><th>操作</th></tr>
+        <tr><th>文件名</th><th>大小</th><th>页数</th><th>分块数</th><th>分块策略</th><th>上传者</th><th>租户</th><th>上传时间</th><th>操作</th></tr>
       </thead>
       <tbody>
         <tr v-for="d in docs" :key="d.doc_id" @click="openDetail(d.doc_id)" class="doc-row">
-          <td class="name-cell">📄 {{ d.filename }}</td>
+          <td class="name-cell">{{ fileIcon(d.file_type) }} {{ d.filename }}</td>
           <td>{{ d.file_size || '-' }}</td>
+          <td>{{ d.pages ?? '-' }}</td>
           <td>{{ d.chunks_count ?? '-' }}</td>
-          <td>{{ d.status || '-' }}</td>
+          <td>{{ strategyLabel(d.chunk_strategy) }}</td>
+          <td>{{ d.uploaded_by || '-' }}</td>
+          <td>{{ d.tenant_name || '-' }}</td>
           <td>{{ fmtTime(d.uploaded_at) }}</td>
-          <td><span class="del-btn" @click.stop="remove(d.doc_id)">🗑</span></td>
+          <td>
+            <span v-if="canUpload" class="download-btn" @click.stop="downloadDoc(d.doc_id, d.filename)" title="下载">📥</span>
+            <span v-if="canUpload" class="del-btn" @click.stop="remove(d.doc_id)">🗑</span>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -48,10 +55,13 @@
           <span class="close" @click="detail=null">✕</span>
         </div>
         <div class="modal-body">
-          <div class="meta-row"><span>格式</span><span>{{ detail.file_type || detail.parser_used }}</span></div>
+          <div class="meta-row"><span>格式</span><span>{{ detail.file_type || '-' }}</span></div>
+          <div class="meta-row" v-if="detail.parser_used"><span>解析器</span><span>{{ detail.parser_used }}</span></div>
           <div class="meta-row"><span>大小</span><span>{{ detail.file_size }}</span></div>
           <div class="meta-row" v-if="detail.pages"><span>页数</span><span>{{ detail.pages }}</span></div>
           <div class="meta-row"><span>分块数</span><span>{{ detail.chunks_count }}</span></div>
+          <div class="meta-row" v-if="detail.chunk_strategy"><span>分块策略</span><span>{{ strategyLabel(detail.chunk_strategy) }}</span></div>
+          <div class="meta-row" v-if="detail.uploaded_by"><span>上传者</span><span>{{ detail.uploaded_by }}</span></div>
           <div class="meta-row"><span>上传时间</span><span>{{ detail.uploaded_at?.slice(0,19) }}</span></div>
           <div class="summary-box" v-if="detail.summary">
             <div class="summary-title">📝 AI 摘要</div>
@@ -87,8 +97,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const docs = ref<any[]>([])
 const detail = ref<any>(null)
@@ -163,6 +174,19 @@ async function onUpload(e: Event) {
   setTimeout(() => { uploadResult.value = null }, 5000)
   await load()
 }
+function downloadDoc(docId: string, filename: string) {
+  const token = localStorage.getItem('token')
+  const a = document.createElement('a')
+  a.href = `/api/documents/${docId}/download`
+  a.download = filename
+  if (token) {
+    // Use fetch + blob so we can send the auth header, then trigger download
+    fetch(a.href, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => { if (!r.ok) throw new Error('download failed'); return r.blob() })
+      .then(blob => { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url) })
+      .catch(() => alert('下载失败'))
+  }
+}
 async function remove(docId: string) {
   if (!confirm('确认删除此文档？')) return
   try { await api.delete(`/documents/${docId}`) } catch {}
@@ -176,11 +200,29 @@ async function openDetail(docId: string) {
 }
 function fmtTime(t: string) { return t ? t.slice(0,16).replace('T',' ') : '-' }
 
+const FILE_ICONS: Record<string, string> = {
+  '.pdf': '📕', '.docx': '📘', '.doc': '📘', '.pptx': '📙', '.ppt': '📙',
+  '.xlsx': '📗', '.xls': '📗', '.png': '🖼', '.jpg': '🖼', '.jpeg': '🖼',
+  '.gif': '🖼', '.bmp': '🖼', '.webp': '🖼', '.txt': '📄', '.md': '📝',
+  '.csv': '📊', '.html': '🌐', '.json': '📋', '.xml': '📋',
+}
+function fileIcon(ext: string) { return FILE_ICONS[ext?.toLowerCase()] || '📄' }
+
+const STRATEGY_LABELS: Record<string, string> = {
+  'fixed_size': '字符滑动窗口', 'sentence': '语义边界',
+  'markdown_header': 'Markdown标题', 'recursive': '递归分块',
+}
+function strategyLabel(s: string) { return STRATEGY_LABELS[s] || s || '-' }
+
+// 权限与多租户：计算上传权限
+const auth = useAuthStore()
+const canUpload = computed(() => ['super_admin', 'tenant_admin', 'editor'].includes(auth.role))
+
 onMounted(load)
 </script>
 
 <style scoped>
-.doc-page { max-width: 1000px; margin: 0 auto; padding: 20px; }
+.doc-page { max-width: 1000px; margin: 0 auto; padding: 64px 20px 20px; }
 .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .top-bar h2 { font-size: 18px; }
 .top-actions { display: flex; gap: 12px; align-items: center; }
@@ -203,6 +245,8 @@ onMounted(load)
 .doc-row { cursor: pointer; }
 .doc-row:hover { background: #f5f7fa; }
 .name-cell { font-weight: 500; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.download-btn { cursor: pointer; color: #c0c4cc; margin-right: 8px; }
+.download-btn:hover { color: #409eff; }
 .del-btn { cursor: pointer; color: #c0c4cc; }
 .del-btn:hover { color: #f56c6c; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 100; }

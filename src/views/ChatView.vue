@@ -10,21 +10,15 @@
         </div>
       </div>
       <div class="sidebar-ft">
-        <router-link to="/documents" class="link">📁 文档管理</router-link>
-        <span class="link" @click="logout">🚪 退出</span>
+        <router-link v-if="canUpload" to="/documents" class="link">📁 知识库管理</router-link>
+        <router-link v-if="auth.isAdmin" to="/monitoring" class="link">📊 监控与成本</router-link>
+        <router-link v-if="auth.isAdmin" to="/admin" class="link">⚙️ 用户和租户</router-link>
+        <router-link v-if="auth.isAdmin" to="/eval" class="link">📊 RAG 测评</router-link>
       </div>
     </aside>
 
     <!-- Chat main -->
     <div class="chat-main">
-      <div class="chat-top" v-if="!editingTitle" @dblclick="startRename">
-        <span>{{ currentTitle }}</span>
-        <div class="rag-toggle" @click.stop="ragEnabled=!ragEnabled" :class="{on:ragEnabled}">
-          <span class="rag-toggle-knob" />
-          <span class="rag-label">{{ ragEnabled ? '📚 知识库' : '🤖 通用' }}</span>
-        </div>
-      </div>
-      <div class="chat-top" v-else><input v-model="newTitle" class="title-input" @keydown.enter="doRename" @blur="doRename" ref="titleInput" /></div>
       <div class="msg-area" ref="msgBox">
         <div v-if="hasMore" class="load-more" @click="loadMore">加载更早的消息</div>
         <div v-if="summary" class="summary-card">
@@ -36,8 +30,21 @@
           <div class="msg-body">
             <div class="role-name">{{ m.role==='user'?'你':'AI Assistant' }}
               <span v-if="m.role==='assistant' && m.label" class="msg-tag" :class="m.label">{{ m.label==='rag' ? '📚 知识库' : '🤖 通用回答' }}</span>
-              <span v-if="m.role==='assistant' && m.confidence" class="confidence-tag" :class="m.confidence">{{ m.confidence==='high' ? '🟢 高置信度' : m.confidence==='medium' ? '🟡 中置信度' : '🔴 低置信度' }}</span>
+              <!-- 置信度暂时隐藏，后续优化 -->
+              <!-- <span v-if="m.role==='assistant' && m.confidence" class="confidence-tag" :class="m.confidence">{{ m.confidence==='high' ? '🟢 高置信度' : m.confidence==='medium' ? '🟡 中置信度' : '🔴 低置信度' }}</span> -->
             </div>
+            <!-- Retrieval steps (RAG only, collapsible) -->
+            <details v-if="m.steps && m.steps.length" class="steps-detail">
+              <summary class="steps-summary">📊 检索过程（{{ m.steps.length }} 步）</summary>
+              <div class="steps-timeline">
+                <div v-for="(s,si) in m.steps" :key="si" class="step-item">
+                  <span class="step-dot" :class="{done:true}" />
+                  <span class="step-label">{{ s.label }}</span>
+                  <span class="step-detail">{{ s.detail }}</span>
+                  <span v-if="s.time != null" class="step-time">{{ s.time }}s</span>
+                </div>
+              </div>
+            </details>
             <!-- Source cards (RAG only) -->
             <div v-if="m.sources && m.sources.length" class="source-cards">
               <div class="source-item" v-for="(s,si) in m.sources" :key="si">
@@ -57,11 +64,16 @@
       <div class="input-bar">
         <div class="input-wrap">
           <textarea v-model="input" class="msg-input" placeholder="输入问题... (Enter 发送, Shift+Enter 换行)" @keydown.enter="onEnter" ref="inputEl"></textarea>
-          <div class="input-actions">
-            <label class="act-btn" title="上传文档">
+          <div class="input-actions-left">
+            <button class="act-btn kb-btn" :class="{on:ragEnabled}" :disabled="kbEmpty" @click="kbEmpty ? null : ragEnabled=!ragEnabled">
+              {{ ragEnabled ? '📚 知识库' : '🤖 通用' }}
+            </button>
+            <label v-if="canUpload" class="act-btn" title="上传文档">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
               <input type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg,.txt" @change="onFile" style="display:none" />
             </label>
+          </div>
+          <div class="input-actions-right">
             <button class="act-btn send" :disabled="!input.trim()||loading" @click="send" title="发送">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
@@ -73,9 +85,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch, computed } from 'vue'
 import { marked } from 'marked'
 import api from '../api'
+import { useAuthStore } from '../stores/auth'
 
 const disclaimerText = '\n\n> ⚠️ 此回答由语言模型生成，可能不完全准确，请谨慎参考。'
 
@@ -92,6 +105,7 @@ const msgBox = ref<HTMLElement>()
 const inputEl = ref<HTMLTextAreaElement>()
 const currentTitle = ref('')
 const ragEnabled = ref(true)
+const kbEmpty = ref(false)
 const hasMore = ref(false)
 const summary = ref('')
 const dots = ref('.')
@@ -111,6 +125,14 @@ const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}
 
 async function loadSessions() {
   try { const r = await api.get('/sessions'); sessions.value = r.data.sessions } catch {}
+}
+async function checkKbStatus() {
+  try {
+    const r = await api.get('/documents')
+    kbEmpty.value = (r.data.total || 0) === 0
+  } catch {
+    // API failed — assume kb is not empty
+  }
 }
 async function switchTo(sid: string) {
   currentId.value = sid
@@ -150,7 +172,9 @@ async function delSession(sid: string) {
   await loadSessions()
 }
 function onEnter(e: KeyboardEvent) { if (!e.shiftKey) { e.preventDefault(); send() } }
-function logout() { localStorage.clear(); window.location.href = '/login' }
+// 权限与多租户：使用 auth store 登出
+const auth = useAuthStore()
+const canUpload = computed(() => ['super_admin', 'tenant_admin', 'editor'].includes(auth.role))
 
 async function send() {
   const text = input.value.trim(); if (!text || loading.value) return
@@ -172,6 +196,7 @@ async function send() {
     let ragUsed = false
     let ragSources: any[] = []
     let ragConfidence = 'medium'
+    let ragSteps: any[] = []
     let ragIdx = -1
     let ragConfirmed = false       // true once we know it's not a rejection
     let ragBuffer = ''
@@ -183,7 +208,7 @@ async function send() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question: text, top_k: 3, messages: messages.value.slice(-6) }),
+        body: JSON.stringify({ question: text, top_k: 3, session_id: currentId.value || undefined, messages: messages.value.map((m: any) => ({ role: m.role, content: m.content })) }),
       })
       const ragReader = ragResp.body?.getReader()
       if (ragReader) {
@@ -191,13 +216,25 @@ async function send() {
         messages.value.push({ role: 'assistant', content: '' })
         ragIdx = messages.value.length - 1
         const dec = new TextDecoder()
+        let lineBuffer = ''
         while (true) {
           const { done, value } = await ragReader.read()
           if (done) break
-          for (const line of dec.decode(value).split('\n')) {
+          const text = lineBuffer + dec.decode(value, { stream: true })
+          const lines = text.split('\n')
+          lineBuffer = text.endsWith('\n') ? '' : (lines.pop() || '')
+          for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
                 const d = JSON.parse(line.slice(6))
+                if (d.steps) {
+                  ragSteps = d.steps
+                  const last = d.steps[d.steps.length - 1]
+                  thinking.value = last ? `✅ ${last.label} — ${last.detail}` : '🔍 正在搜索知识库...'
+                }
+                if (d.status === 'found') {
+                  ragUsed = true
+                }
                 if (d.sources) {
                   ragUsed = true
                   ragSources = d.sources
@@ -238,12 +275,14 @@ async function send() {
                       } else {
                         messages.value[ragIdx].content = final
                         messages.value[ragIdx].sources = ragSources
+                        messages.value[ragIdx].steps = ragSteps
                         messages.value[ragIdx].label = 'rag'
                         messages.value[ragIdx].confidence = ragConfidence
                         thinking.value = ''
                       }
                     } else {
                       messages.value[ragIdx].sources = ragSources
+                      messages.value[ragIdx].steps = ragSteps
                       messages.value[ragIdx].label = 'rag'
                       messages.value[ragIdx].confidence = ragConfidence
                       thinking.value = ''
@@ -252,6 +291,10 @@ async function send() {
                   break
                 }
                 if (d.step === 'not_found' || d.error) {
+                  if (ragIdx >= 0 && messages.value[ragIdx]?.role === 'assistant' && !messages.value[ragIdx].content) {
+                    messages.value.pop()
+                  }
+                  ragIdx = -1
                   break
                 }
               } catch {}
@@ -265,6 +308,7 @@ async function send() {
 
     // Fallback: RAG returned nothing or disabled, use chat stream
     if (!ragUsed) {
+      thinking.value = '💬 正在通过AI生成回答...'
       const hist = messages.value.map((m: any) => ({ role: m.role, content: m.content }))
       messages.value.push({ role: 'assistant', content: '', label: 'ai' })
       const idx = messages.value.length - 1
@@ -298,8 +342,7 @@ async function send() {
       thinking.value = ''
     }
 
-    // Save to session
-    try { await api.post('/chat', { messages: messages.value.map((m:any)=>({role:m.role,content:cleanContent(m.content)})), session_id: currentId.value }) } catch {}
+    // 消息已由 /chat/stream 自动保存，无需再调 /chat 浪费 token
     await loadSessions()
   } catch (e: any) {
     thinking.value = ''
@@ -345,11 +388,11 @@ async function onFile(e: Event) {
 
 function scrollDown() { nextTick(() => { if (msgBox.value) msgBox.value.scrollTop = msgBox.value.scrollHeight }) }
 watch(input, () => { nextTick(() => { if (inputEl.value) { inputEl.value.style.height = 'auto'; inputEl.value.style.height = inputEl.value.scrollHeight + 'px' } }) })
-onMounted(loadSessions)
+onMounted(() => { loadSessions(); checkKbStatus() })
 </script>
 
 <style scoped>
-.chat-layout { display: flex; height: 100vh; }
+.chat-layout { display: flex; height: 100vh; padding-top: 44px; }
 .sidebar { width: 200px; background: #2c2c2c; color: #ccc; display: flex; flex-direction: column; font-size: 13px; flex-shrink: 0; }
 .sidebar-hd { padding: 12px; font-weight: 600; color: #fff; display: flex; justify-content: space-between; }
 .btn-new { cursor: pointer; color: #409eff; font-size: 18px; }
@@ -364,8 +407,6 @@ onMounted(loadSessions)
 .link { color: #999; cursor: pointer; text-decoration: none; font-size: 12px; }
 .link:hover { color: #fff; }
 .chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #f0f2f5; }
-.chat-top { padding: 10px 20px; background: #fff; font-weight: 600; font-size: 14px; border-bottom: 1px solid #e4e7ed; cursor: default; display: flex; justify-content: space-between; align-items: center; }
-.title-input { border: 1px solid #409eff; border-radius: 4px; padding: 2px 8px; font-size: 14px; outline: none; width: 250px; }
 .msg-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .load-more { text-align: center; color: #409eff; cursor: pointer; font-size: 13px; padding: 6px 0; user-select: none; }
 .load-more:hover { color: #337ecc; }
@@ -390,29 +431,19 @@ onMounted(loadSessions)
 .dots { display: inline-block; width: 20px; color: #409eff; font-weight: bold; }
 .input-bar { padding: 16px 20px; background: #fff; border-top: 1px solid #e4e7ed; }
 .input-wrap { position: relative; }
-.msg-input { display: block; width: 100%; padding: 12px 60px 12px 14px; border: 1px solid #dcdfe6; border-radius: 10px; font-size: 14px; font-family: inherit; line-height: 1.6; resize: none; outline: none; min-height: 48px; max-height: 200px; }
+.msg-input { display: block; width: 100%; padding: 12px 50px 44px 14px; border: 1px solid #dcdfe6; border-radius: 10px; font-size: 14px; font-family: inherit; line-height: 1.6; resize: none; outline: none; min-height: 48px; max-height: 200px; }
 .msg-input:focus { border-color: #409eff; box-shadow: 0 0 0 3px rgba(64,158,255,.06); }
-.input-actions { position: absolute; right: 6px; bottom: 8px; display: flex; gap: 4px; }
+.input-actions-left { position: absolute; left: 6px; bottom: 8px; display: flex; gap: 4px; }
+.input-actions-right { position: absolute; right: 6px; bottom: 8px; display: flex; gap: 4px; }
 .act-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid #dcdfe6; border-radius: 8px; background: #fff; cursor: pointer; color: #909399; }
 .act-btn:hover { border-color: #409eff; background: #ecf5ff; color: #409eff; }
 .act-btn.send { background: #409eff; border-color: #409eff; color: #fff; }
 .act-btn.send:hover:not(:disabled) { background: #337ecc; }
 .act-btn.send:disabled { background: #a0cfff; border-color: #a0cfff; cursor: not-allowed; }
 
-/* RAG toggle */
-.rag-toggle {
-  display: flex; align-items: center; gap: 8px; padding: 4px 12px;
-  border: 1px solid #dcdfe6; border-radius: 18px; cursor: pointer;
-  background: #f5f7fa; user-select: none; transition: all .2s;
-}
-.rag-toggle.on { background: #ecf5ff; border-color: #409eff; }
-.rag-toggle-knob {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #c0c4cc; transition: all .2s;
-}
-.rag-toggle.on .rag-toggle-knob { background: #409eff; }
-.rag-label { font-size: 12px; color: #909399; }
-.rag-toggle.on .rag-label { color: #409eff; }
+/* KB toggle in input bar */
+.act-btn.kb-btn { width: auto; padding: 0 12px; font-size: 12px; white-space: nowrap; }
+.act-btn.kb-btn.on { border-color: #409eff; background: #ecf5ff; color: #409eff; }
 
 /* Message body */
 .msg-body { max-width: 620px; }
@@ -433,6 +464,30 @@ onMounted(loadSessions)
 .confidence-tag.high { background: #f0f9eb; color: #67c23a; }
 .confidence-tag.medium { background: #fdf6ec; color: #e6a23c; }
 .confidence-tag.low { background: #fef0f0; color: #f56c6c; }
+
+/* Steps timeline */
+.steps-detail { margin-bottom: 8px; }
+.steps-summary {
+  font-size: 12px; color: #909399; cursor: pointer;
+  padding: 4px 0; user-select: none;
+}
+.steps-summary:hover { color: #409eff; }
+.steps-timeline {
+  margin-top: 6px; padding-left: 10px;
+  border-left: 2px solid #e4e7ed;
+}
+.step-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0; font-size: 12px; line-height: 1.5;
+}
+.step-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #c0c4cc; flex-shrink: 0; margin-left: -5px;
+}
+.step-dot.done { background: #67c23a; }
+.step-label { color: #303133; font-weight: 500; white-space: nowrap; }
+.step-detail { color: #909399; flex: 1; }
+.step-time { color: #c0c4cc; font-size: 11px; white-space: nowrap; }
 
 /* Source cards */
 .source-cards {
