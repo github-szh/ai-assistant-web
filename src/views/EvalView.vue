@@ -234,7 +234,7 @@ async function send() {
   try {
     const res = await api.post('/query/eval', {
       question: text,
-      top_k: 3,
+      top_k: 5,
       ground_truth: groundTruth.value || undefined,
     })
     const data = res.data as EvalResponse

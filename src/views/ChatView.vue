@@ -208,7 +208,7 @@ async function send() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question: text, top_k: 3, session_id: currentId.value || undefined, messages: messages.value.map((m: any) => ({ role: m.role, content: m.content })) }),
+        body: JSON.stringify({ question: text, top_k: 5, session_id: currentId.value || undefined, messages: messages.value.map((m: any) => ({ role: m.role, content: m.content })) }),
       })
       const ragReader = ragResp.body?.getReader()
       if (ragReader) {
